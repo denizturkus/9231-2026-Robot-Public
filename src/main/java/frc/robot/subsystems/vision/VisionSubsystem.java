@@ -63,6 +63,15 @@ public class VisionSubsystem extends SubsystemBase {
         return inputs[cameraIndex].latestTargetObservation.tx();
     }
 
+    /**
+     * Returns whether the requested camera currently has a valid simple target.
+     *
+     * @param cameraIndex The index of the camera to use.
+     */
+    public boolean hasTarget(int cameraIndex) {
+        return inputs[cameraIndex].hasTarget;
+    }
+
     @Override
     public void periodic() {
         for (int i = 0; i < io.length; i++) {
@@ -80,6 +89,7 @@ public class VisionSubsystem extends SubsystemBase {
         for (int cameraIndex = 0; cameraIndex < io.length; cameraIndex++) {
             // Update disconnected alert
             disconnectedAlerts[cameraIndex].set(!inputs[cameraIndex].connected);
+            boolean poseEstimationEnabled = isCameraPoseEstimationEnabled(cameraIndex);
 
             // Initialize logging values
             List<Pose3d> tagPoses = new LinkedList<>();
@@ -97,11 +107,14 @@ public class VisionSubsystem extends SubsystemBase {
 
             // Loop over pose observations
             for (var observation : inputs[cameraIndex].poseObservations) {
+                double cameraMaxAmbiguity = getCameraMaxAmbiguity(cameraIndex);
+                double cameraMaxZError = getCameraMaxZError(cameraIndex);
+
                 // Check whether to reject pose
                 boolean rejectPose = observation.tagCount() == 0 // Must have at least one tag
                         || (observation.tagCount() == 1
-                                && observation.ambiguity() > maxAmbiguity) // Cannot be high ambiguity
-                        || Math.abs(observation.pose().getZ()) > maxZError // Must have realistic Z coordinate
+                                && observation.ambiguity() > cameraMaxAmbiguity) // Cannot be high ambiguity
+                        || Math.abs(observation.pose().getZ()) > cameraMaxZError // Must have realistic Z coordinate
 
                         // Must be within the field boundaries
                         || observation.pose().getX() < 0.0
@@ -130,9 +143,11 @@ public class VisionSubsystem extends SubsystemBase {
                     linearStdDev *= linearStdDevMegatag2Factor;
                     angularStdDev *= angularStdDevMegatag2Factor;
                 }
-                if (cameraIndex < cameraStdDevFactors.length) {
-                    linearStdDev *= cameraStdDevFactors[cameraIndex];
-                    angularStdDev *= cameraStdDevFactors[cameraIndex];
+                linearStdDev *= getCameraLinearStdDevFactor(cameraIndex);
+                angularStdDev *= getCameraAngularStdDevFactor(cameraIndex);
+
+                if (!poseEstimationEnabled) {
+                    continue;
                 }
 
                 // Send vision observation
@@ -155,6 +170,30 @@ public class VisionSubsystem extends SubsystemBase {
             Logger.recordOutput(
                     "Vision/Camera" + Integer.toString(cameraIndex) + "/RobotPosesRejected",
                     robotPosesRejected.toArray(new Pose3d[robotPosesRejected.size()]));
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/MaxAmbiguity",
+                    getCameraMaxAmbiguity(cameraIndex));
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/MaxZError",
+                    getCameraMaxZError(cameraIndex));
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/LinearStdDevFactor",
+                    getCameraLinearStdDevFactor(cameraIndex));
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/AngularStdDevFactor",
+                    getCameraAngularStdDevFactor(cameraIndex));
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/PoseEstimationEnabled",
+                    poseEstimationEnabled);
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/HasTarget",
+                    inputs[cameraIndex].hasTarget);
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/TargetXDegrees",
+                    inputs[cameraIndex].latestTargetObservation.tx().getDegrees());
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/TargetYDegrees",
+                    inputs[cameraIndex].latestTargetObservation.ty().getDegrees());
             allTagPoses.addAll(tagPoses);
             allRobotPoses.addAll(robotPoses);
             allRobotPosesAccepted.addAll(robotPosesAccepted);

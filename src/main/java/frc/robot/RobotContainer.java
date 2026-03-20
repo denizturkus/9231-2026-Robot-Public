@@ -19,18 +19,19 @@ import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 
 import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.auto.NamedCommands;
 
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
-import frc.robot.Constants;
 import frc.robot.commands.DriveCommands;
-import frc.robot.subsystems.drive.Drive;
+import frc.robot.subsystems.drive.DriveSubsystem;
 import frc.robot.subsystems.drive.GyroIO;
 import frc.robot.subsystems.drive.GyroIOPigeon2;
 import frc.robot.subsystems.drive.GyroIOSim;
@@ -55,14 +56,13 @@ import frc.robot.subsystems.shooter.hood.HoodIO;
 import frc.robot.subsystems.shooter.hood.HoodIOTalonFX;
 import frc.robot.subsystems.shooter.hood.HoodIOSim;
 import frc.robot.subsystems.shooter.hood.HoodSubsystem;
-import frc.robot.subsystems.indexer.hopper.HopperSubsystem;
 import frc.robot.subsystems.shooter.turret.TurretSubsystem;
 import frc.robot.subsystems.shooter.turret.TurretIOSim;
 import frc.robot.subsystems.shooter.turret.TurretIOTalonFX;
 import frc.robot.subsystems.shooter.turret.TurretIO;
 import frc.robot.subsystems.vision.VisionConstants;
 import frc.robot.subsystems.vision.VisionIO;
-import frc.robot.subsystems.vision.VisionIOLimelightFixed;
+import frc.robot.subsystems.vision.VisionIOLimelight;
 import frc.robot.subsystems.vision.VisionIOPhotonVisionSim;
 import frc.robot.subsystems.vision.VisionSubsystem;
 
@@ -74,7 +74,7 @@ import frc.robot.subsystems.vision.VisionSubsystem;
 public class RobotContainer {
     
     //drivetrain
-    private final Drive drive;
+    private final DriveSubsystem drive;
     private SwerveDriveSimulation driveSimulation = null;
 
     //vision
@@ -100,7 +100,9 @@ public class RobotContainer {
     private final CommandXboxController musicController = new CommandXboxController(2);
 
     // Dashboard inputs
-    private final LoggedDashboardChooser<Command> autoChooser;
+    private final LoggedDashboardChooser<Command> autoChooser; 
+    public static Alliance currentAlliance = Alliance.Red;
+    public final LoggedDashboardChooser<Alliance> m_allianceChooser;
 
     /** The container for the robot. Contains subsystems, OI devices, and commands. */
     public RobotContainer() {
@@ -108,32 +110,40 @@ public class RobotContainer {
         switch (Constants.currentMode) {
             case REAL:
                 // Real robot, instantiate hardware IO implementations
-                drive = new Drive(
+                drive = new DriveSubsystem(
                         new GyroIOPigeon2(),
                         new ModuleIOTalonFXReal(TunerConstants.FrontLeft),
                         new ModuleIOTalonFXReal(TunerConstants.FrontRight),
                         new ModuleIOTalonFXReal(TunerConstants.BackLeft),
                         new ModuleIOTalonFXReal(TunerConstants.BackRight),
                         (pose) -> {});
-                this.vision = new VisionSubsystem(
-                        drive,
-                        new VisionIOLimelightFixed(VisionConstants.camera0Name, drive::getRotation),
-                        new VisionIOLimelightFixed(VisionConstants.camera1Name, drive::getRotation));
                 intake = new IntakeSubsystem(new IntakeIOTalonFX());
                 hopper = new HopperSubsystem();
                 feeder = new FeederSubsystem(new FeederIOTalonFX());
                 flywheel = new FlywheelSubsystem(new FlywheelIOTalonFX());
                 turret = new TurretSubsystem(new TurretIOTalonFX());
                 hood = new HoodSubsystem(new HoodIOTalonFX());
+                this.vision = new VisionSubsystem(
+                        drive,
+                        new VisionIOLimelight(
+                                VisionConstants.camera0Name,
+                                drive::getRotation,
+                                () -> Math.toDegrees(drive.getRobotRelativeSpeeds().omegaRadiansPerSecond),
+                                () -> VisionConstants.robotToCamera0),
+                        new VisionIOLimelight(
+                                VisionConstants.camera1Name,
+                                drive::getRotation,
+                                () -> Math.toDegrees(drive.getRobotRelativeSpeeds().omegaRadiansPerSecond),
+                                () -> VisionConstants.getTurretCameraTransform(Rotation2d.fromDegrees(turret.getAngle()))));
                 superstructure = new Superstructure(drive, intake, hopper, feeder, turret, flywheel, hood,vision);
 
                 break;
             case SIM:
                 // Sim robot, instantiate physics sim IO implementations
 
-                driveSimulation = new SwerveDriveSimulation(Drive.mapleSimConfig, new Pose2d(3, 3, new Rotation2d()));
+                driveSimulation = new SwerveDriveSimulation(DriveSubsystem.mapleSimConfig, new Pose2d(3, 3, new Rotation2d()));
                 SimulatedArena.getInstance().addDriveTrainSimulation(driveSimulation);
-                drive = new Drive(
+                drive = new DriveSubsystem(
                         new GyroIOSim(driveSimulation.getGyroSimulation()),
                         new ModuleIOTalonFXSim(
                                 TunerConstants.FrontLeft, driveSimulation.getModules()[0]),
@@ -144,25 +154,29 @@ public class RobotContainer {
                         new ModuleIOTalonFXSim(
                                 TunerConstants.BackRight, driveSimulation.getModules()[3]),
                         driveSimulation::setSimulationWorldPose);
-                vision = new VisionSubsystem(
-                        drive,
-                        new VisionIOPhotonVisionSim(
-                                VisionConstants.camera0Name, VisionConstants.robotToCamera0, driveSimulation::getSimulatedDriveTrainPose),
-                        new VisionIOPhotonVisionSim(
-                                VisionConstants.camera1Name, VisionConstants.robotToCamera1, driveSimulation::getSimulatedDriveTrainPose));
                 intake = new IntakeSubsystem(new IntakeIOSim());
                 hopper = new HopperSubsystem();
                 feeder = new FeederSubsystem(new FeederIOSim());
                 flywheel = new FlywheelSubsystem(new FlywheelIOSim());
                 turret = new TurretSubsystem(new TurretIOSim());
                 hood = new HoodSubsystem(new HoodIOSim());
+                vision = new VisionSubsystem(
+                        drive,
+                        new VisionIOPhotonVisionSim(
+                                VisionConstants.camera0Name,
+                                VisionConstants.robotToCamera0,
+                                driveSimulation::getSimulatedDriveTrainPose),
+                        new VisionIOPhotonVisionSim(
+                                VisionConstants.camera1Name,
+                                () -> VisionConstants.getTurretCameraTransform(Rotation2d.fromDegrees(turret.getAngle())),
+                                driveSimulation::getSimulatedDriveTrainPose));
                 superstructure = new Superstructure(drive, intake, hopper, feeder, turret, flywheel, hood,vision);
 
                 break;
 
             default:
                 // Replayed robot, disable IO implementations
-                drive = new Drive(
+                drive = new DriveSubsystem(
                         new GyroIO() {},
                         new ModuleIO() {},
                         new ModuleIO() {},
@@ -194,8 +208,26 @@ public class RobotContainer {
         autoChooser.addOption("Drive SysId (Dynamic Forward)", drive.sysIdDynamic(SysIdRoutine.Direction.kForward));
         autoChooser.addOption("Drive SysId (Dynamic Reverse)", drive.sysIdDynamic(SysIdRoutine.Direction.kReverse));
 
+        m_allianceChooser = new LoggedDashboardChooser<>("Alliance Chooser");
+
+        m_allianceChooser.addDefaultOption("Red Alliance", Alliance.Red);
+        m_allianceChooser.addOption("Blue Alliance", Alliance.Blue);
+
+        // register named commands for auto path following
+        registerNamedCommands();
+
         // Configure the button bindings
         configureButtonBindings();
+        
+    }
+
+    private void registerNamedCommands() {
+        NamedCommands.registerCommand("StartIntaking", superstructure.StartIntakingCommand());
+        NamedCommands.registerCommand("StopIntaking", superstructure.StopIntakingCommand());
+        NamedCommands.registerCommand("ShootFuel", superstructure.ShootFuelCommand());
+        NamedCommands.registerCommand("TargetHub", superstructure.TargetHubCommand());
+        NamedCommands.registerCommand("TargetAllianceSide", superstructure.TargetAllianceSideCommand());
+        NamedCommands.registerCommand("CancelTargeting",superstructure.CancelTargetingCommand());
     }
 
     /**
@@ -225,15 +257,14 @@ public class RobotContainer {
                 : () -> drive.setPose(new Pose2d(drive.getPose().getTranslation(), new Rotation2d())); // zero gyro
         driverController.start().onTrue(Commands.runOnce(resetGyro, drive).ignoringDisable(true));
 
-        operatorController.a().onTrue(superstructure.StartIntakingCommand());
-        operatorController.b().onTrue(superstructure.StopIntakingCommand());
-        operatorController.x().whileTrue(superstructure.FeedFuelCommand());
-      /*operatorController.rightBumper().onTrue(superstructure.TargetHubCommand());
-        operatorController.leftBumper().onTrue(superstructure.TargetAllianceCommand());
-        operatorController.y().onTrue(superstructure.CancelTargetingCommand());*/
+      //operatorController.a().onTrue(superstructure.StartIntakingCommand());
+      //operatorController.b().onTrue(superstructure.StopIntakingCommand());
+        operatorController.x().whileTrue(superstructure.ShootFuelCommand());
+        operatorController.rightTrigger().whileTrue(superstructure.FlywheelOpenLoopCommand());
+        operatorController.rightBumper().onTrue(superstructure.TargetHubCommand());
+        operatorController.leftBumper().onTrue(superstructure.TargetAllianceSideCommand());
 
     }
-
     /**
      * Use this to pass the autonomous command to the main {@link Robot} class.
      *

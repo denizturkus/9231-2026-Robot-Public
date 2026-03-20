@@ -50,7 +50,6 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.Constants;
 import frc.robot.Constants.Mode;
-import frc.robot.subsystems.drive.TunerConstants;
 import frc.robot.subsystems.vision.VisionSubsystem;
 import frc.robot.util.LocalADStarAK;
 import java.util.concurrent.locks.Lock;
@@ -62,7 +61,7 @@ import org.ironmaple.simulation.drivesims.configs.SwerveModuleSimulationConfig;
 import org.littletonrobotics.junction.AutoLogOutput;
 import org.littletonrobotics.junction.Logger;
 
-public class Drive extends SubsystemBase implements VisionSubsystem.VisionConsumer {
+public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.VisionConsumer {
     // TunerConstants doesn't include these constants, so they are declared locally
     static final double ODOMETRY_FREQUENCY =
             new CANBus(TunerConstants.DrivetrainConstants.CANBusName).isNetworkFD() ? 250.0 : 100.0;
@@ -75,6 +74,7 @@ public class Drive extends SubsystemBase implements VisionSubsystem.VisionConsum
                     Math.hypot(TunerConstants.BackRight.LocationX, TunerConstants.BackRight.LocationY)));
 
     // PathPlanner config constants
+    // TODO(new robot): Re-measure these for the new robot because they affect PathPlanner behavior.
     private static final double ROBOT_MASS_KG = 50;
     private static final double ROBOT_MOI = 6.883;
     private static final double WHEEL_COF = 1.2;
@@ -127,7 +127,7 @@ public class Drive extends SubsystemBase implements VisionSubsystem.VisionConsum
 
     private final Consumer<Pose2d> resetSimulationPoseCallBack;
 
-    public Drive(
+    public DriveSubsystem(
             GyroIO gyroIO,
             ModuleIO flModuleIO,
             ModuleIO frModuleIO,
@@ -310,6 +310,23 @@ public class Drive extends SubsystemBase implements VisionSubsystem.VisionConsum
     @AutoLogOutput(key = "SwerveChassisSpeeds/Measured")
     private ChassisSpeeds getChassisSpeeds() {
         return kinematics.toChassisSpeeds(getModuleStates());
+    }
+
+    /** Returns the measured chassis speeds of the robot in the robot reference frame. */
+    public ChassisSpeeds getRobotRelativeSpeeds() {
+        return getChassisSpeeds();
+    }
+
+    /** Returns the measured chassis speeds of the robot in the field reference frame. */
+    public ChassisSpeeds getFieldRelativeSpeeds() {
+        ChassisSpeeds robotRelativeSpeeds = getRobotRelativeSpeeds();
+        Rotation2d rotation = getRotation();
+        return new ChassisSpeeds(
+                robotRelativeSpeeds.vxMetersPerSecond * rotation.getCos()
+                        - robotRelativeSpeeds.vyMetersPerSecond * rotation.getSin(),
+                robotRelativeSpeeds.vxMetersPerSecond * rotation.getSin()
+                        + robotRelativeSpeeds.vyMetersPerSecond * rotation.getCos(),
+                robotRelativeSpeeds.omegaRadiansPerSecond);
     }
 
     /** Returns the position of each module in radians. */

@@ -18,16 +18,18 @@ import static frc.robot.subsystems.vision.VisionConstants.*;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Transform3d;
+import java.util.Objects;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 import org.photonvision.PhotonCamera;
 
 /** IO implementation for real PhotonVision hardware. */
 public class VisionIOPhotonVision implements VisionIO {
     protected final PhotonCamera camera;
-    protected final Transform3d robotToCamera;
+    protected final Supplier<Transform3d> robotToCameraSupplier;
 
     /**
      * Creates a new VisionIOPhotonVision.
@@ -36,13 +38,26 @@ public class VisionIOPhotonVision implements VisionIO {
      * @param rotationSupplier The 3D position of the camera relative to the robot.
      */
     public VisionIOPhotonVision(String name, Transform3d robotToCamera) {
+        this(name, () -> robotToCamera);
+    }
+
+    /**
+     * Creates a new VisionIOPhotonVision.
+     *
+     * @param name The configured name of the camera.
+     * @param robotToCameraSupplier The live transform from the robot to the camera.
+     */
+    public VisionIOPhotonVision(String name, Supplier<Transform3d> robotToCameraSupplier) {
         camera = new PhotonCamera(name);
-        this.robotToCamera = robotToCamera;
+        this.robotToCameraSupplier = Objects.requireNonNull(robotToCameraSupplier, "robotToCameraSupplier");
     }
 
     @Override
     public void updateInputs(VisionIOInputs inputs) {
         inputs.connected = camera.isConnected();
+        Transform3d robotToCamera = robotToCameraSupplier.get();
+        boolean hasTarget = inputs.hasTarget;
+        TargetObservation latestTargetObservation = inputs.latestTargetObservation;
 
         // Read new camera observations
         Set<Short> tagIds = new HashSet<>();
@@ -50,11 +65,13 @@ public class VisionIOPhotonVision implements VisionIO {
         for (var result : camera.getAllUnreadResults()) {
             // Update latest target observation
             if (result.hasTargets()) {
-                inputs.latestTargetObservation = new TargetObservation(
+                hasTarget = true;
+                latestTargetObservation = new TargetObservation(
                         Rotation2d.fromDegrees(result.getBestTarget().getYaw()),
                         Rotation2d.fromDegrees(result.getBestTarget().getPitch()));
             } else {
-                inputs.latestTargetObservation = new TargetObservation(new Rotation2d(), new Rotation2d());
+                hasTarget = false;
+                latestTargetObservation = new TargetObservation(new Rotation2d(), new Rotation2d());
             }
 
             // Add pose observation
@@ -112,6 +129,9 @@ public class VisionIOPhotonVision implements VisionIO {
                 }
             }
         }
+
+        inputs.hasTarget = hasTarget;
+        inputs.latestTargetObservation = latestTargetObservation;
 
         // Save pose observations to inputs object
         inputs.poseObservations = new PoseObservation[poseObservations.size()];

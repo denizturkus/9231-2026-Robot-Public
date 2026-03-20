@@ -1,6 +1,6 @@
 package frc.robot.subsystems.shooter.turret;
 
-import static frc.robot.subsystems.shooter.hood.HoodConstants.kHoodCalibrationAngle;
+import static frc.robot.subsystems.shooter.turret.TurretConstants.kTurretCalibrationAngle;
 import static frc.robot.subsystems.shooter.turret.TurretConstants.kD;
 import static frc.robot.subsystems.shooter.turret.TurretConstants.kGearboxReduction;
 import static frc.robot.subsystems.shooter.turret.TurretConstants.kIsFOC;
@@ -113,7 +113,7 @@ public class TurretIOTalonFX implements TurretIO {
 
 	@Override
 	public void zeroEncoders() {
-		m_talon.setPosition(kHoodCalibrationAngle);
+		m_talon.setPosition(kTurretCalibrationAngle);
 	}
 
 	@Override

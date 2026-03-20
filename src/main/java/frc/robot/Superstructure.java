@@ -1,24 +1,23 @@
 package frc.robot;
 
+import static frc.robot.subsystems.vision.VisionConstants.turretCameraIndex;
+
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
-import edu.wpi.first.wpilibj2.command.ConditionalCommand;
-import edu.wpi.first.wpilibj2.command.FunctionalCommand;
-import edu.wpi.first.wpilibj2.command.InstantCommand;
-import edu.wpi.first.wpilibj2.command.SequentialCommandGroup;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import frc.robot.Superstructure.ShooterState;
-import frc.robot.subsystems.drive.Drive;
+import frc.robot.commands.ShootOnTheMoveCommand;
+import frc.robot.subsystems.drive.DriveSubsystem;
 import frc.robot.subsystems.indexer.feeder.FeederSubsystem;
 import frc.robot.subsystems.indexer.hopper.HopperSubsystem;
 import frc.robot.subsystems.intake.IntakeSubsystem;
 import frc.robot.subsystems.shooter.flywheel.FlywheelSubsystem;
 import frc.robot.subsystems.shooter.hood.HoodSubsystem;
 import frc.robot.subsystems.shooter.turret.TurretSubsystem;
-import frc.robot.subsystems.vision.VisionSubsystem; 
+import frc.robot.subsystems.vision.VisionSubsystem;
+import java.util.function.Supplier;
 
 public class Superstructure extends SubsystemBase {
-
     public enum MotionState {
         STATIONARY, // robot is not moving, either because the driver isn't commanding movement or because the robot is balancing in place
         MOVING; // robot is moving in any way, whether it's driver-controlled or auto-balancing
@@ -44,25 +43,26 @@ public class Superstructure extends SubsystemBase {
         ALLIANCE; //currently targeting the alliance side to pass fuel
     }
 
-    private MotionState m_MotionState = MotionState.STATIONARY;
-    private ShooterState m_ShooterState = ShooterState.IDLE;
-    private IntakeState m_IntakeState = IntakeState.STOWED;
-    private TargetingState m_TargetingState = TargetingState.NONE;
+    public MotionState m_MotionState = MotionState.STATIONARY;
+    public ShooterState m_ShooterState = ShooterState.IDLE;
+    public IntakeState m_IntakeState = IntakeState.STOWED;
+    public TargetingState m_TargetingState = TargetingState.NONE;
 
-    private final Drive m_drive;
-    private final IntakeSubsystem m_intake;
-    private final HopperSubsystem m_hopper;
-    private final FeederSubsystem m_feeder;
-    private final TurretSubsystem m_turret;
-    private final FlywheelSubsystem m_flywheel;
-    private final HoodSubsystem m_hood;
+    public final DriveSubsystem m_drive;
+    public final IntakeSubsystem m_intake;
+    public final HopperSubsystem m_hopper;
+    public final FeederSubsystem m_feeder;
+    public final TurretSubsystem m_turret;
+    public final FlywheelSubsystem m_flywheel;
+    public final HoodSubsystem m_hood;
 
-    private final VisionSubsystem m_vision;
-   
+    public final VisionSubsystem m_vision;
+
     private boolean m_isFeeding = false;
     private boolean m_isHopperRunning = false;
+    private double kFlywheel3000RPM = 3000;
 
-    public Superstructure(Drive drive, IntakeSubsystem intake, HopperSubsystem hopper, FeederSubsystem feeder, TurretSubsystem turret, FlywheelSubsystem flywheel, HoodSubsystem hood, VisionSubsystem vision) {
+    public Superstructure(DriveSubsystem drive, IntakeSubsystem intake, HopperSubsystem hopper, FeederSubsystem feeder, TurretSubsystem turret, FlywheelSubsystem flywheel, HoodSubsystem hood, VisionSubsystem vision) {
         m_drive = drive;
         m_intake = intake;
         m_hopper = hopper;
@@ -71,7 +71,7 @@ public class Superstructure extends SubsystemBase {
         m_flywheel = flywheel;
         m_hood = hood;
         m_vision = vision;
-    } 
+    }
 
     public MotionState getMotionState() {
         return m_MotionState;
@@ -85,13 +85,16 @@ public class Superstructure extends SubsystemBase {
         return m_IntakeState;
     }
 
+    public TargetingState getTargetingState() {
+        return m_TargetingState;
+    }
+
 
     public Command StartIntakingCommand() {
-        return Commands.runOnce(() -> m_IntakeState = IntakeState.INTAKING)
-                .andThen(Commands.parallel(
+        return Commands.parallel(
                         Commands.runOnce(m_intake::openIntake),
                         Commands.runOnce(m_intake::runIntakeRollers),
-                        Commands.runOnce(() -> m_IntakeState = IntakeState.DEPLOYING)))
+                        Commands.runOnce(() -> m_IntakeState = IntakeState.DEPLOYING))
                 .andThen(
                         Commands.runOnce(m_hopper::feed).onlyIf(() -> !m_isHopperRunning))
                 .andThen(Commands.runOnce(() -> m_isHopperRunning = true))
@@ -106,14 +109,19 @@ public class Superstructure extends SubsystemBase {
                     Commands.runOnce(m_intake::closeIntake),
                     Commands.runOnce(() -> m_IntakeState = IntakeState.STOWING))
                 .andThen(
-                    Commands.runOnce(m_hopper::stop)
+                    Commands.runOnce(m_hopper::stop).andThen(Commands.runOnce(() -> m_isHopperRunning = false))
                             .onlyIf(() -> m_isHopperRunning && m_ShooterState == ShooterState.IDLE))
                 .andThen(Commands.waitUntil(m_intake::isArmNearSetpoint))
                 .andThen(Commands.runOnce(() -> m_IntakeState = IntakeState.STOWED))
                 .onlyIf(() -> m_IntakeState == IntakeState.INTAKING);
     }
 
-    public Command FeedFuelCommand() {
+    public Command FlywheelOpenLoopCommand() {
+        
+        return Commands.startEnd(() -> m_flywheel.setVelocity(kFlywheel3000RPM), () -> m_flywheel.stop(), m_flywheel);
+    }
+
+    public Command ShootFuelCommand() {
         return Commands.startEnd(
                 () -> {
                     m_feeder.feed();
@@ -129,107 +137,75 @@ public class Superstructure extends SubsystemBase {
         ).onlyIf(() -> m_ShooterState == ShooterState.READY);
     }
 
-    /*
     public Command TargetHubCommand() {
-        return new FunctionalCommand(
-                // initialize
-                () -> {
-                    m_ShooterState = ShooterState.LOADING;
-                    m_TargetingState = TargetingState.HUB;
-                },
-
-                // execute continuously
-                () -> {
-                    // 1) Get vision data
-                    double turretTargetDeg = m_vision.getTurretTargetDegrees();
-                    double distanceMeters = m_vision.getTargetDistanceMeters();
-
-                    // 2) Interpolate hood angle from distance
-                    double hoodTargetDeg = m_hoodInterpolationTable.get(distanceMeters);
-                    double flywheelTargetRPM = m_flywheelInterpolationTable.get(distanceMeters);
-
-                    // 3) Command subsystems continuously
-                    m_turret.setTurretAngle(turretTargetDeg);
-                    m_hood.setHoodAngle(hoodTargetDeg);
-                    m_flywheel.setVelocity(flywheelTargetRPM);
-
-                    // 4) Update ready state
-                    if (m_turret.isNearSetpoint()
-                            && m_hood.isNearSetpoint()
-                            && m_flywheel.isNearSetpoint()) {
-                        m_ShooterState = ShooterState.READY;
-                    } else {
-                        m_ShooterState = ShooterState.LOADING;
-                    }
-                },
-
-                // end
-                interrupted -> {
-                    // choose behavior you want
-                    // maybe keep flywheel spinning, maybe not
-                    m_turret.stop();
-                    m_hood.stop();
-                    m_flywheel.stop();
-                    m_ShooterState = ShooterState.IDLE;
-                },
-
-                // isFinished
-                () -> false
-        );
+        Command command = createShootOnTheMoveCommand(
+                TargetingState.HUB, ShootOnTheMoveCommand.hubTargetSupplier())
+                .andThen(Commands.runOnce(m_hopper::feed).onlyIf(() -> !m_isHopperRunning));
+        command.setName("TargetHub");
+        return command;
     }
 
-    
-    public Command TargetAllianceCommand() {
-        return new FunctionalCommand(
-                // initialize
-                () -> {
-                    m_ShooterState = ShooterState.LOADING;
-                },
-
-                // execute continuously
-                () -> {
-                    // 1) Get vision data
-                    double turretTargetDeg = m_vision.getTurretTargetDegrees();
-                    double distanceMeters = m_vision.getTargetDistanceMeters();
-
-                    // 2) Interpolate hood angle from distance
-                    double hoodTargetDeg = m_hoodInterpolationTable.get(distanceMeters);
-                    double flywheelTargetRPM = m_flywheelInterpolationTable.get(distanceMeters);
-
-                    // 3) Command subsystems continuously
-                    m_turret.setTurretAngle(turretTargetDeg);
-                    m_hood.setHoodAngle(hoodTargetDeg);
-                    m_flywheel.setVelocity(flywheelTargetRPM);
-
-                    // 4) Update ready state
-                    if (m_turret.isNearSetpoint()
-                            && m_hood.isNearSetpoint()
-                            && m_flywheel.isNearSetpoint()) {
-                        m_ShooterState = ShooterState.READY;
-                    } else {
-                        m_ShooterState = ShooterState.LOADING;
-                    }
-                },
-
-                // end
-                interrupted -> {
-                    // choose behavior you want
-                    // maybe keep flywheel spinning, maybe not
-                    m_turret.stop();
-                    m_hood.stop();
-                    m_flywheel.stop();
-                    m_ShooterState = ShooterState.IDLE;
-                },
-
-                // isFinished
-                () -> false
-        );
+    public Command TargetAllianceSideCommand() {
+        Command command = createShootOnTheMoveCommand(
+                TargetingState.ALLIANCE, ShootOnTheMoveCommand.allianceSideTargetSupplier());
+        command.setName("TargetAllianceSide");
+        return command;
     }
 
     public Command CancelTargetingCommand() {
-            return Commands.parallel(Commands.runOnce(m_turret::stop), 
-                Commands.runOnce(m_hood::stop), Commands.runOnce(m_flywheel::stop))
-    } */
+        Command command = Commands.runOnce(
+                () -> {
+                    m_TargetingState = TargetingState.NONE;
+                    m_ShooterState = ShooterState.IDLE;
+                    if (m_IntakeState == IntakeState.STOWED) {
+                        Commands.runOnce(m_hopper::stop).schedule();
+                        m_isHopperRunning = false;
+                    }
+                },
+                m_turret,
+                m_hood,
+                m_flywheel)
+                .onlyIf(() -> m_TargetingState != TargetingState.NONE);
+        command.setName("CancelTargeting");
+        return command;
+    }
 
-    
+    private Command createShootOnTheMoveCommand(
+            TargetingState targetingState, Supplier<Translation2d> targetSupplier) {
+        return Commands.parallel(
+                        new ShootOnTheMoveCommand(
+                                m_drive,
+                                m_turret,
+                                m_hood,
+                                m_flywheel,
+                                targetSupplier,
+                                m_vision,
+                                turretCameraIndex),
+                        Commands.run(() -> updateShootOnTheMoveState(targetingState)))
+                .beforeStarting(() -> {
+                    m_TargetingState = targetingState;
+                    m_ShooterState = ShooterState.LOADING;
+                })
+                .finallyDo((interrupted) -> {
+                    m_TargetingState = TargetingState.NONE;
+                    if (!m_isFeeding) {
+                        m_ShooterState = ShooterState.IDLE;
+                    }
+                });
+    }
+
+    private void updateShootOnTheMoveState(TargetingState targetingState) {
+        m_TargetingState = targetingState;
+        if (m_isFeeding) {
+            m_ShooterState = ShooterState.SHOOTING;
+            return;
+        }
+
+        if (m_turret.isNearSetpoint() && m_hood.isNearSetpoint() && m_flywheel.isNearSetpoint()) {
+            m_ShooterState = ShooterState.READY;
+        } else {
+            m_ShooterState = ShooterState.LOADING;
+        }
+    }
+
 }
