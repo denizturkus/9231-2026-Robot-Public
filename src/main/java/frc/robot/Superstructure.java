@@ -60,7 +60,7 @@ public class Superstructure extends SubsystemBase {
 
     private boolean m_isFeeding = false;
     private boolean m_isHopperRunning = false;
-    private double kFlywheel3000RPM = 3000;
+    private double kFlywheel3000RPM = 4500;
 
     public Superstructure(DriveSubsystem drive, IntakeSubsystem intake, HopperSubsystem hopper, FeederSubsystem feeder, TurretSubsystem turret, FlywheelSubsystem flywheel, HoodSubsystem hood, VisionSubsystem vision) {
         m_drive = drive;
@@ -116,11 +116,6 @@ public class Superstructure extends SubsystemBase {
                 .onlyIf(() -> m_IntakeState == IntakeState.INTAKING);
     }
 
-    public Command FlywheelOpenLoopCommand() {
-        
-        return Commands.startEnd(() -> m_flywheel.setVelocity(kFlywheel3000RPM), () -> m_flywheel.stop(), m_flywheel);
-    }
-
     public Command ShootFuelCommand() {
         return Commands.startEnd(
                 () -> {
@@ -134,7 +129,7 @@ public class Superstructure extends SubsystemBase {
                     m_ShooterState = ShooterState.READY;
                 },
                 m_feeder
-        ).onlyIf(() -> m_ShooterState == ShooterState.READY);
+        ).onlyIf(() -> m_ShooterState == ShooterState.READY || m_flywheel.getVelocity() > 2000);
     }
 
     public Command TargetHubCommand() {
@@ -206,6 +201,33 @@ public class Superstructure extends SubsystemBase {
         } else {
             m_ShooterState = ShooterState.LOADING;
         }
+    }
+
+    //test commands, these are not a part of the main superstructure and should not be used for competition
+
+    public Command FlywheelOpenLoopCommand() {
+        
+        return Commands.startEnd(() -> m_flywheel.setVelocity(kFlywheel3000RPM), () -> m_flywheel.stop());
+    }
+
+    public Command IntakeArmExtendTestCommand() {
+        return Commands.runOnce(m_intake::openIntake);
+    }
+
+    public Command IntakeArmRetractTestCommand() {
+        return Commands.runOnce(m_intake::closeIntake);
+    }
+
+    public Command RunIntakeRollersTestCommand() {
+        return Commands.runOnce(m_intake::runIntakeRollers);
+    }
+
+    public Command StopIntakeRollersTestCommand() {
+        return Commands.runOnce(m_intake::stopRollers);
+    }
+
+    public Command HopperOpenLoopCommand() {
+        return Commands.startEnd(m_hopper::feed, m_hopper::stop);
     }
 
 }

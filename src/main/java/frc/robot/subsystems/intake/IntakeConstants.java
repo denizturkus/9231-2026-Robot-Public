@@ -52,7 +52,7 @@ public class IntakeConstants {
 	// TODO(new robot): Verify roller and arm motor directions on the new robot.
 	// Inversions
 	public static final boolean kRollerMotorInverted = false;
-	public static final boolean kArmMotorInverted = false;
+	public static final boolean kArmMotorInverted = true;
 
 	// Sim-only values below; ignore for the cloned real robot unless you care about simulation fidelity.
 	// Simulation data

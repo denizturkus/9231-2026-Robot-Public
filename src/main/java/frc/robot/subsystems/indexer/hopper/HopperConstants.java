@@ -15,7 +15,7 @@ public final class HopperConstants {
 
     // TODO(new robot): Verify hopper motor inversion and neutral behavior on the new robot.
     // Motor config
-    public static final InvertedValue kMotorInverted = InvertedValue.CounterClockwise_Positive;
+    public static final InvertedValue kMotorInverted = InvertedValue.Clockwise_Positive;
     public static final NeutralModeValue kNeutralMode = NeutralModeValue.Brake;
 
     // TODO(new robot): Revisit current limits if the electrical package differs.
@@ -27,7 +27,7 @@ public final class HopperConstants {
 
     // TODO(new robot): Verify hopper feed/reverse voltages on the new robot.
     // Open-loop voltage commands
-    public static final double kFeedVoltage = 6.0;
+    public static final double kFeedVoltage = 4.5;
     public static final double kFastFeedVoltage = 10.0;
     public static final double kReverseVoltage = -4.0;
     public static final double kStopVoltage = 0.0;

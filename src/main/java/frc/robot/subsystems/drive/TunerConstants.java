@@ -77,7 +77,7 @@ public class TunerConstants {
     // TODO(new robot): Re-characterize max drive speed at 12V on the new robot.
     // Theoretical free speed (m/s) at 12 V applied output;
     // This needs to be tuned to your individual robot
-    public static final LinearVelocity kSpeedAt12Volts = MetersPerSecond.of(5.04);
+    public static final LinearVelocity kSpeedAt12Volts = MetersPerSecond.of(2.04);
 
     // Every 1 rotation of the azimuth results in kCoupleRatio drive motor turns;
     // This may need to be tuned to your individual robot

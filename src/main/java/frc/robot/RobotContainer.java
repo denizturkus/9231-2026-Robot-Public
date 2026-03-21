@@ -57,9 +57,6 @@ import frc.robot.subsystems.shooter.hood.HoodIOTalonFX;
 import frc.robot.subsystems.shooter.hood.HoodIOSim;
 import frc.robot.subsystems.shooter.hood.HoodSubsystem;
 import frc.robot.subsystems.shooter.turret.TurretSubsystem;
-import frc.robot.subsystems.shooter.turret.TurretIOSim;
-import frc.robot.subsystems.shooter.turret.TurretIOTalonFX;
-import frc.robot.subsystems.shooter.turret.TurretIO;
 import frc.robot.subsystems.vision.VisionConstants;
 import frc.robot.subsystems.vision.VisionIO;
 import frc.robot.subsystems.vision.VisionIOLimelight;
@@ -121,7 +118,7 @@ public class RobotContainer {
                 hopper = new HopperSubsystem();
                 feeder = new FeederSubsystem(new FeederIOTalonFX());
                 flywheel = new FlywheelSubsystem(new FlywheelIOTalonFX());
-                turret = new TurretSubsystem(new TurretIOTalonFX());
+                turret = new TurretSubsystem();
                 hood = new HoodSubsystem(new HoodIOTalonFX());
                 this.vision = new VisionSubsystem(
                         drive,
@@ -158,7 +155,7 @@ public class RobotContainer {
                 hopper = new HopperSubsystem();
                 feeder = new FeederSubsystem(new FeederIOSim());
                 flywheel = new FlywheelSubsystem(new FlywheelIOSim());
-                turret = new TurretSubsystem(new TurretIOSim());
+                turret = new TurretSubsystem();
                 hood = new HoodSubsystem(new HoodIOSim());
                 vision = new VisionSubsystem(
                         drive,
@@ -188,12 +185,14 @@ public class RobotContainer {
                 hopper = new HopperSubsystem();
                 feeder = new FeederSubsystem(new FeederIO() {});
                 flywheel = new FlywheelSubsystem(new FlywheelIO() {});
-                turret = new TurretSubsystem(new TurretIO() {});
+                turret = new TurretSubsystem();
                 hood = new HoodSubsystem(new HoodIO() {});
                 superstructure = new Superstructure(drive, intake, hopper, feeder, turret, flywheel, hood, vision);
 
                 break;
         }
+
+        initializeRobotState();
 
         // Set up auto routines
         autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
@@ -219,6 +218,22 @@ public class RobotContainer {
         // Configure the button bindings
         configureButtonBindings();
         
+    }
+
+    private void initializeRobotState() {
+        switch (Constants.currentMode) {
+            case REAL:
+                turret.zeroEncoders();
+                drive.setPose(Constants.kStartingPose);
+                break;
+            case SIM:
+                turret.zeroEncoders();
+                drive.setPose(driveSimulation.getSimulatedDriveTrainPose());
+                break;
+            default:
+                drive.setPose(Constants.kStartingPose);
+                break;
+        }
     }
 
     private void registerNamedCommands() {
@@ -257,12 +272,14 @@ public class RobotContainer {
                 : () -> drive.setPose(new Pose2d(drive.getPose().getTranslation(), new Rotation2d())); // zero gyro
         driverController.start().onTrue(Commands.runOnce(resetGyro, drive).ignoringDisable(true));
 
-      //operatorController.a().onTrue(superstructure.StartIntakingCommand());
-      //operatorController.b().onTrue(superstructure.StopIntakingCommand());
-        operatorController.x().whileTrue(superstructure.ShootFuelCommand());
-        operatorController.rightTrigger().whileTrue(superstructure.FlywheelOpenLoopCommand());
-        operatorController.rightBumper().onTrue(superstructure.TargetHubCommand());
-        operatorController.leftBumper().onTrue(superstructure.TargetAllianceSideCommand());
+        //change these to operator controller
+        operatorController.a().onTrue(superstructure.StartIntakingCommand());
+        operatorController.b().onTrue(superstructure.StopIntakingCommand());
+        driverController.b().whileTrue(superstructure.ShootFuelCommand());
+        driverController.rightTrigger().whileTrue(superstructure.FlywheelOpenLoopCommand());
+        driverController.rightBumper().onTrue(superstructure.TargetHubCommand());
+        driverController.leftBumper().onTrue(superstructure.TargetAllianceSideCommand());
+        driverController.leftTrigger().onTrue(superstructure.CancelTargetingCommand());
 
     }
     /**

@@ -14,7 +14,7 @@ public class FeederConstants {
 	// TODO(new robot): Verify feeder feed/unfeed voltages on the new robot.
 	// Control parameters
 	// Voltage when intaking, ~2500 RPM for the Kraken X60.
-	public static final double kFeedVoltage = 4.5;
+	public static final double kFeedVoltage = 6.5;
 	public static final double kUnfeedVoltage = -3.5;
 
 	// TODO(new robot): Verify feeder gearbox reduction on the new robot.
@@ -34,7 +34,7 @@ public class FeederConstants {
 
 	// TODO(new robot): Verify feeder motor direction on the new robot.
 	// Inversions
-	public static final boolean kMotorInverted = false;
+	public static final boolean kMotorInverted = true; //inverted::yes
 
 	// Sim-only values below; ignore for the cloned real robot unless you care about simulation fidelity.
 	// Simulation data
