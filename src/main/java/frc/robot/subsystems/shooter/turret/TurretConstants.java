@@ -14,18 +14,22 @@ public final class TurretConstants {
     public static final double kHomeAngleDeg = 0.0;
     public static final double kMinAngleDeg = -180.0;
     public static final double kMaxAngleDeg = 180.0;
-    public static final double kAngleToleranceDeg = 5.0;
+    // TODO: Tighten this back down after turret tuning is finished.
+    // Previous value for tuned-ready checks:
+    // public static final double kAngleToleranceDeg = 5.0;
+    public static final double kAngleToleranceDeg = 8.0;
 
     // Phoenix closed-loop gains. These are still tuning values, but Motion Magic handles the
     // profile generation and onboard PID.
-    public static final double kP = 0.19;
-    public static final double kD = 0.0031;
+    public static final double kP = 0.24;
+    public static final double kD = 0.0050;
     public static final double kS = 0.0;
-    public static final double kV = 0.008087;
+    public static final double kV = 0.0078;
 
-    public static final double kMotionMagicCruiseVelocityDegPerSec = 720.0;
-    public static final double kMotionMagicAccelerationDegPerSecSq = 1440.0;
+    public static final double kMotionMagicCruiseVelocityDegPerSec = 700.0;
+    public static final double kMotionMagicAccelerationDegPerSecSq = 1250.0;
     public static final double kMotionMagicJerkDegPerSecCubed = 0.0;
+
 
     public static final boolean kUseFOC = true; // Phoenix Pro feature
     public static final boolean kMotorInverted = true;

@@ -25,7 +25,7 @@ public final class Constants {
 
     public static final Pose2d kStartingPose = new Pose2d(3, 2, Rotation2d.kZero);
 
-    // TODO(new robot): Measure the turret pivot pose relative to the robot origin on the new robot.
+    // TODO: Measure the turret pivot pose relative to the robot origin on the new robot.
     // Keep this synchronized with ShootOnTheMoveConstants.kRobotToTurret.
   	public static Transform3d robotToTurret =
     	  new Transform3d(
@@ -41,25 +41,25 @@ public final class Constants {
 	public static final double kLoopPeriodSeconds = 1.0 / 50.0;
 
 	public static final class ShootOnTheMoveConstants {
-		// TODO(new robot): Retune moving-shot latency compensation and filtering on the real robot.
+		// TODO: Retune moving-shot latency compensation and filtering on the real robot.
 		public static final double kPhaseDelaySeconds = 0.03;
 		public static final double kVelocityFilterWindowSeconds = 0.1;
 		public static final int kLookaheadIterations = 10;
 		public static final boolean kUseTurretVisionCorrection = true;
 
-		// TODO(new robot): Zero this against the turret Limelight crosshair and shooter centerline.
+		// TODO: Zero this against the turret Limelight crosshair and shooter centerline.
 		public static final double kTurretVisionAimOffsetDegrees = 0.0;
 
-		// TODO(new robot): Revalidate the supported moving-shot distance window for the new robot.
+		// TODO: Revalidate the supported moving-shot distance window for the new robot.
 		public static final double kMinDistanceMeters = 1.34;
 		public static final double kMaxDistanceMeters = 5.60;
 
-		// TODO(new robot): Measure the turret XY offset from the robot origin.
+		// TODO: Measure the turret XY offset from the robot origin.
 		// Keep this synchronized with Constants.robotToTurret.
 		public static final Translation2d kRobotToTurret =
 				new Translation2d(Inches.of(-5.25).in(Meters), Inches.of(5.25).in(Meters));
 
-		// TODO(new robot): Rebuild this hood table from real shot testing for the new robot.
+		// TODO: Rebuild this hood table from real shot testing for the new robot.
 		public static final InterpolatingDoubleTreeMap kHoodAngleDegrees =
 				createInterpolatingMap(
 						new double[][] {
@@ -75,7 +75,7 @@ public final class Constants {
 							{5.60, 35.0}
 						});
 
-		// TODO(new robot): Rebuild this flywheel table from real shot testing for the new robot.
+		// TODO: Rebuild this flywheel table from real shot testing for the new robot.
 		public static final InterpolatingDoubleTreeMap kFlywheelSpeedRpm =
 				createInterpolatingMap(
 						new double[][] {
@@ -90,7 +90,7 @@ public final class Constants {
 							{5.410986, 4000.0}
 						});
 
-		// TODO(new robot): Rebuild this time-of-flight table from logged real-shot data for the new robot.
+		// TODO: Rebuild this time-of-flight table from logged real-shot data for the new robot.
 		public static final InterpolatingDoubleTreeMap kTimeOfFlightSeconds =
 				createInterpolatingMap(
 						new double[][] {
@@ -117,13 +117,13 @@ public final class Constants {
 
 	/** Class holding the physical parameters of the robot. */
 	public static final class PhysicalParameters {
-		// TODO(new robot): Re-measure robot footprint, mass, and wheel/floor coefficient for the new robot.
+		// TODO: Re-measure robot footprint, mass, and wheel/floor coefficient for the new robot.
 		// Robot measurements
 		public static final Distance kRobotLength = Centimeters.of(67.2), kRobotWidth = Centimeters.of(67.2);
 		public static final Mass kRobotMass = Kilograms.of(50);
 		public static final double kWheelCOF = 1.426;
 
-		// TODO(new robot): Update battery values only if the electrical package meaningfully differs.
+		// TODO: Update battery values only if the electrical package meaningfully differs.
 		public static final double kBatteryInternalResistance = 0.016;
 		public static final double kNominalVoltage = 12.8;
 		public static final double kRobotWarningBatteryVoltageThreshold = 11.6;

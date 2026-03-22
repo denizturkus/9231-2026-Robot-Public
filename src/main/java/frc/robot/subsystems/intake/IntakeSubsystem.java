@@ -16,8 +16,6 @@ import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import frc.robot.subsystems.intake.IntakeIO;
-import frc.robot.subsystems.intake.IntakeIOInputsAutoLogged;
 import org.littletonrobotics.junction.Logger;
 
 /**
@@ -70,6 +68,9 @@ public class IntakeSubsystem extends SubsystemBase {
 		Logger.recordOutput("Intake/ArmEncodersZeroed", areEncodersZeroed());
 		Logger.recordOutput("Intake/ArmNearSetpoint", isArmNearSetpoint());
 		Logger.recordOutput("Intake/ArmSetpoint", m_latestSetpoint);
+		Logger.recordOutput(
+				"Intake/ArmPositionErrorDeg",
+				MathUtil.inputModulus(m_latestSetpoint - getIntakeAngle(), -180, 180));
 
 		m_rollerMotorDisconnectedAlert.set(!m_inputs.rollerMotorConnected);
 		m_armMotorDisconnectedAlert.set(!m_inputs.armMotorConnected);

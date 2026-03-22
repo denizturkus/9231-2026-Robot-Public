@@ -45,6 +45,9 @@ import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.util.sendable.Sendable;
+import edu.wpi.first.util.sendable.SendableBuilder;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
@@ -74,7 +77,7 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
                     Math.hypot(TunerConstants.BackRight.LocationX, TunerConstants.BackRight.LocationY)));
 
     // PathPlanner config constants
-    // TODO(new robot): Re-measure these for the new robot because they affect PathPlanner behavior.
+    // TODO: Re-measure these for the new robot because they affect PathPlanner behavior.
     private static final double ROBOT_MASS_KG = 50;
     private static final double ROBOT_MOI = 6.883;
     private static final double WHEEL_COF = 1.2;
@@ -170,6 +173,30 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
                 new SysIdRoutine.Config(
                         null, null, null, (state) -> Logger.recordOutput("Drive/SysIdState", state.toString())),
                 new SysIdRoutine.Mechanism((voltage) -> runCharacterization(voltage.in(Volts)), null, this));
+
+        SmartDashboard.putData("Drive/SwerveWidget", new Sendable() {
+            @Override
+            public void initSendable(SendableBuilder builder) {
+                builder.setSmartDashboardType("SwerveDrive");
+                builder.addDoubleProperty(
+                        "Front Left Angle", () -> modules[0].getState().angle.getRadians(), null);
+                builder.addDoubleProperty(
+                        "Front Left Velocity", () -> modules[0].getState().speedMetersPerSecond, null);
+                builder.addDoubleProperty(
+                        "Front Right Angle", () -> modules[1].getState().angle.getRadians(), null);
+                builder.addDoubleProperty(
+                        "Front Right Velocity", () -> modules[1].getState().speedMetersPerSecond, null);
+                builder.addDoubleProperty(
+                        "Back Left Angle", () -> modules[2].getState().angle.getRadians(), null);
+                builder.addDoubleProperty(
+                        "Back Left Velocity", () -> modules[2].getState().speedMetersPerSecond, null);
+                builder.addDoubleProperty(
+                        "Back Right Angle", () -> modules[3].getState().angle.getRadians(), null);
+                builder.addDoubleProperty(
+                        "Back Right Velocity", () -> modules[3].getState().speedMetersPerSecond, null);
+                builder.addDoubleProperty("Robot Angle", () -> getRotation().getRadians(), null);
+            }
+        });
     }
 
     @Override
@@ -226,6 +253,8 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
 
         // Update gyro alert
         gyroDisconnectedAlert.set(!gyroInputs.connected && Constants.currentMode != Mode.SIM);
+
+        logChassisSpeedScalars("Drive/MeasuredChassisSpeeds", getChassisSpeeds());
     }
 
     /**
@@ -242,6 +271,7 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
         // Log unoptimized setpoints and setpoint speeds
         Logger.recordOutput("SwerveStates/Setpoints", setpointStates);
         Logger.recordOutput("SwerveChassisSpeeds/Setpoints", speeds);
+        logChassisSpeedScalars("Drive/SetpointChassisSpeeds", speeds);
 
         // Send setpoints to modules
         for (int i = 0; i < 4; i++) {
@@ -378,6 +408,16 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
     /** Returns the maximum angular speed in radians per sec. */
     public double getMaxAngularSpeedRadPerSec() {
         return getMaxLinearSpeedMetersPerSec() / DRIVE_BASE_RADIUS;
+    }
+
+    private void logChassisSpeedScalars(String key, ChassisSpeeds speeds) {
+        Logger.recordOutput(key + "/VxMetersPerSec", speeds.vxMetersPerSecond, "meters_per_second");
+        Logger.recordOutput(key + "/VyMetersPerSec", speeds.vyMetersPerSecond, "meters_per_second");
+        Logger.recordOutput(key + "/OmegaRadPerSec", speeds.omegaRadiansPerSecond, "radians_per_second");
+        Logger.recordOutput(
+                key + "/LinearSpeedMetersPerSec",
+                Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond),
+                "meters_per_second");
     }
 
     /** Returns an array of module translations. */

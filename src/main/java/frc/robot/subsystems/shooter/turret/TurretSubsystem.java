@@ -37,7 +37,6 @@ import edu.wpi.first.math.filter.Debouncer.DebounceType;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.units.measure.Angle;
 import edu.wpi.first.units.measure.AngularVelocity;
-import edu.wpi.first.units.measure.Current;
 import edu.wpi.first.units.measure.Temperature;
 import edu.wpi.first.units.measure.Voltage;
 import edu.wpi.first.wpilibj.Alert;
@@ -49,7 +48,7 @@ import frc.robot.util.PhoenixUtil;
 import org.littletonrobotics.junction.Logger;
 
 /**
- * Direct Phoenix 6 turret subsystem using a Kraken X44 + Motion Magic.
+ * Direct Phoenix 6 turret subsystem using a Kraken X60 + Motion Magic.
  *
  * <p>The mechanism is treated as a limited-rotation turret, not a continuous mechanism. The
  * Talon is zeroed to the turret's startup position and both software and software-side clamping
@@ -73,8 +72,6 @@ public class TurretSubsystem extends SubsystemBase {
     private final StatusSignal<Voltage> motorVoltageSignal;
     private final StatusSignal<AngularVelocity> velocitySignal;
     private final StatusSignal<Angle> positionSignal;
-    private final StatusSignal<Current> supplyCurrentSignal;
-    private final StatusSignal<Current> statorCurrentSignal;
     private final StatusSignal<Temperature> temperatureSignal;
 
     private final Debouncer connectedDebouncer = new Debouncer(0.5, DebounceType.kFalling);
@@ -86,8 +83,6 @@ public class TurretSubsystem extends SubsystemBase {
     private double measuredAngleDeg = kHomeAngleDeg;
     private double measuredVelocityDegPerSec = 0.0;
     private double appliedVolts = 0.0;
-    private double supplyCurrentAmps = 0.0;
-    private double statorCurrentAmps = 0.0;
     private double temperatureCelsius = 0.0;
 
     private double requestedSetpointDeg = kHomeAngleDeg;
@@ -107,8 +102,6 @@ public class TurretSubsystem extends SubsystemBase {
             motorVoltageSignal = motor.getMotorVoltage();
             velocitySignal = motor.getVelocity();
             positionSignal = motor.getPosition();
-            supplyCurrentSignal = motor.getSupplyCurrent();
-            statorCurrentSignal = motor.getStatorCurrent();
             temperatureSignal = motor.getDeviceTemp();
 
             BaseStatusSignal.setUpdateFrequencyForAll(
@@ -116,8 +109,6 @@ public class TurretSubsystem extends SubsystemBase {
                     motorVoltageSignal,
                     velocitySignal,
                     positionSignal,
-                    supplyCurrentSignal,
-                    statorCurrentSignal,
                     temperatureSignal);
             ParentDevice.optimizeBusUtilizationForAll(motor);
 
@@ -129,8 +120,6 @@ public class TurretSubsystem extends SubsystemBase {
             motorVoltageSignal = null;
             velocitySignal = null;
             positionSignal = null;
-            supplyCurrentSignal = null;
-            statorCurrentSignal = null;
             temperatureSignal = null;
         }
     }
@@ -207,8 +196,6 @@ public class TurretSubsystem extends SubsystemBase {
         Logger.recordOutput("Turret/VelocityDegPerSec", measuredVelocityDegPerSec, "degrees_per_second");
         Logger.recordOutput("Turret/PositionErrorDeg", clampedSetpointDeg - measuredAngleDeg, "degrees");
         Logger.recordOutput("Turret/AppliedVolts", appliedVolts, "volts");
-        Logger.recordOutput("Turret/SupplyCurrentAmps", supplyCurrentAmps, "amps");
-        Logger.recordOutput("Turret/StatorCurrentAmps", statorCurrentAmps, "amps");
         Logger.recordOutput("Turret/TemperatureCelsius", temperatureCelsius, "celsius");
         Logger.recordOutput("Turret/NearSetpoint", isNearSetpoint());
         Logger.recordOutput("Turret/AtForwardLimit", measuredAngleDeg >= kMaxAngleDeg - 1.0);
@@ -220,16 +207,12 @@ public class TurretSubsystem extends SubsystemBase {
                         motorVoltageSignal,
                         velocitySignal,
                         positionSignal,
-                        supplyCurrentSignal,
-                        statorCurrentSignal,
                         temperatureSignal)
                 .isOK());
 
         measuredAngleDeg = Units.rotationsToDegrees(positionSignal.getValueAsDouble());
         measuredVelocityDegPerSec = Units.rotationsToDegrees(velocitySignal.getValueAsDouble());
         appliedVolts = motorVoltageSignal.getValueAsDouble();
-        supplyCurrentAmps = Math.abs(supplyCurrentSignal.getValueAsDouble());
-        statorCurrentAmps = Math.abs(statorCurrentSignal.getValueAsDouble());
         temperatureCelsius = temperatureSignal.getValueAsDouble();
     }
 

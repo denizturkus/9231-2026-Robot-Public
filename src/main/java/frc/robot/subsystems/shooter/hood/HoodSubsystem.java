@@ -2,18 +2,49 @@ package frc.robot.subsystems.shooter.hood;
 
 import static edu.wpi.first.units.Units.Seconds;
 import static edu.wpi.first.units.Units.Volts;
-import static frc.robot.subsystems.shooter.hood.HoodConstants.kHoodCalibrationAngle;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kAngleToleranceDeg;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kD;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kG;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kGearboxReduction;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kHomeAngleDeg;
 import static frc.robot.subsystems.shooter.hood.HoodConstants.kMaxAngleDeg;
-import static frc.robot.subsystems.shooter.hood.HoodConstants.kMaxTemperature;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kMaxTemperatureCelsius;
 import static frc.robot.subsystems.shooter.hood.HoodConstants.kMinAngleDeg;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kMotionMagicAccelerationDegPerSecSq;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kMotionMagicCruiseVelocityDegPerSec;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kMotorCANBus;
 import static frc.robot.subsystems.shooter.hood.HoodConstants.kMotorID;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kMotorInverted;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kMotorStatorLimitAmps;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kMotorSupplyLimitAmps;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kP;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kS;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kStatusSignalFrequencyHz;
 import static frc.robot.subsystems.shooter.hood.HoodConstants.kSysIdTimeout;
 import static frc.robot.subsystems.shooter.hood.HoodConstants.kSysIdVoltageRampRate;
 import static frc.robot.subsystems.shooter.hood.HoodConstants.kSysIdVoltageStep;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kUseFOC;
+import static frc.robot.subsystems.shooter.hood.HoodConstants.kV;
 
-import frc.robot.util.Tracer;
+import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.StatusSignal;
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.MotionMagicVoltage;
+import com.ctre.phoenix6.controls.NeutralOut;
+import com.ctre.phoenix6.controls.VoltageOut;
+import com.ctre.phoenix6.hardware.ParentDevice;
+import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.signals.GravityTypeValue;
+import com.ctre.phoenix6.signals.InvertedValue;
+import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.MathUtil;
-import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.filter.Debouncer;
+import edu.wpi.first.math.filter.Debouncer.DebounceType;
+import edu.wpi.first.math.util.Units;
+import edu.wpi.first.units.measure.Angle;
+import edu.wpi.first.units.measure.AngularVelocity;
+import edu.wpi.first.units.measure.Temperature;
+import edu.wpi.first.units.measure.Voltage;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -21,150 +52,250 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
-import frc.robot.subsystems.shooter.hood.HoodIO;
-import frc.robot.subsystems.shooter.hood.HoodIOInputsAutoLogged;
+import frc.robot.Constants;
+import frc.robot.util.PhoenixUtil;
 import org.littletonrobotics.junction.Logger;
 
-/**
- * The main shooter hood subsystem to adjust shot pitch angles.
- */
+/** Direct TalonFX hood subsystem for a single Kraken X60. */
 public class HoodSubsystem extends SubsystemBase {
-	private final HoodIO m_io;
-	private HoodIOInputsAutoLogged m_inputs = new HoodIOInputsAutoLogged();
+	private enum ControlMode {
+		NEUTRAL,
+		VOLTAGE,
+		MOTION_MAGIC
+	}
 
-	private Alert m_motorDisconnectedAlert = new Alert("Hood motor has disconnected! (ID: " + kMotorID + ")",
-			AlertType.kError);
-	private Alert m_motorOverheatAlert = new Alert("Hood motor is overheating! (ID: " + kMotorID + ")",
-			AlertType.kWarning);
+	private final boolean hardwareEnabled;
+	private final TalonFX motor;
 
-	private boolean m_isZeroed = false;
-	private double m_setpoint = kHoodCalibrationAngle;
+	private final VoltageOut voltageRequest = new VoltageOut(0.0).withEnableFOC(kUseFOC);
+	private final MotionMagicVoltage motionMagicRequest =
+			new MotionMagicVoltage(0.0).withEnableFOC(kUseFOC).withSlot(0);
+	private final NeutralOut neutralRequest = new NeutralOut();
 
-	private SysIdRoutine m_routine;
+	private final StatusSignal<Voltage> motorVoltageSignal;
+	private final StatusSignal<AngularVelocity> velocitySignal;
+	private final StatusSignal<Angle> positionSignal;
+	private final StatusSignal<Temperature> temperatureSignal;
 
-	private static final double kAngleDefaultToleranceDeg = 4.0;
+	private final Debouncer connectedDebouncer = new Debouncer(0.5, DebounceType.kFalling);
+	private final Alert motorDisconnectedAlert =
+			new Alert("Hood motor disconnected! (ID: " + kMotorID + ")", AlertType.kError);
+	private final Alert motorOverheatAlert =
+			new Alert("Hood motor overheating! (ID: " + kMotorID + ")", AlertType.kWarning);
+	private final SysIdRoutine routine;
 
-	/**
-	 * Constructs a new Hood.
-	 *
-	 * @param io The IO implementation to use.
-	 */
-	public HoodSubsystem(HoodIO io) {
-		m_io = io;
+	private double measuredPositionRotations = Units.degreesToRotations(kHomeAngleDeg);
+	private double measuredVelocityRotationsPerSec = 0.0;
+	private double measuredAngleDeg = kHomeAngleDeg;
+	private double measuredVelocityDegPerSec = 0.0;
+	private double appliedVolts = 0.0;
+	private double temperatureCelsius = 0.0;
 
-		// SysID routine
-		m_routine = new SysIdRoutine(
-				new SysIdRoutine.Config(Volts.of(kSysIdVoltageRampRate).per(Seconds.of(1).unit()),
-						Volts.of(kSysIdVoltageStep), Seconds.of(kSysIdTimeout),
-						(state) -> { Logger.recordOutput("Hood/SysIdState", state.toString()); }),
-				new SysIdRoutine.Mechanism((voltage) -> m_io.runVolts(voltage.in(Volts)), null, this));
+	private double requestedSetpointDeg = kHomeAngleDeg;
+	private double clampedSetpointDeg = kHomeAngleDeg;
+	private boolean motorConnected = false;
+	private boolean encodersZeroed = false;
+	private ControlMode controlMode = ControlMode.NEUTRAL;
+
+	public HoodSubsystem() {
 		setName("Hood");
+		hardwareEnabled = Constants.currentMode == Constants.Mode.REAL;
+
+		if (hardwareEnabled) {
+			motor = kMotorCANBus.isEmpty() ? new TalonFX(kMotorID) : new TalonFX(kMotorID, kMotorCANBus);
+			configureMotor();
+
+			motorVoltageSignal = motor.getMotorVoltage();
+			velocitySignal = motor.getVelocity();
+			positionSignal = motor.getPosition();
+			temperatureSignal = motor.getDeviceTemp();
+
+			BaseStatusSignal.setUpdateFrequencyForAll(
+					kStatusSignalFrequencyHz,
+					motorVoltageSignal,
+					velocitySignal,
+					positionSignal,
+					temperatureSignal);
+			ParentDevice.optimizeBusUtilizationForAll(motor);
+		} else {
+			motor = null;
+			motorVoltageSignal = null;
+			velocitySignal = null;
+			positionSignal = null;
+			temperatureSignal = null;
+			motorConnected = true;
+		}
+
+		routine = new SysIdRoutine(
+				new SysIdRoutine.Config(
+						Volts.of(kSysIdVoltageRampRate).per(Seconds.of(1).unit()),
+						Volts.of(kSysIdVoltageStep),
+						Seconds.of(kSysIdTimeout),
+						(state) -> Logger.recordOutput("Hood/SysIdState", state.toString())),
+				new SysIdRoutine.Mechanism((voltage) -> setVoltage(voltage.in(Volts)), null, this));
+	}
+
+	private void configureMotor() {
+		TalonFXConfiguration config = new TalonFXConfiguration();
+
+		config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+		config.MotorOutput.Inverted =
+				kMotorInverted
+						? InvertedValue.Clockwise_Positive
+						: InvertedValue.CounterClockwise_Positive;
+
+		config.CurrentLimits.SupplyCurrentLimit = kMotorSupplyLimitAmps;
+		config.CurrentLimits.SupplyCurrentLimitEnable = true;
+		config.CurrentLimits.StatorCurrentLimit = kMotorStatorLimitAmps;
+		config.CurrentLimits.StatorCurrentLimitEnable = true;
+
+		config.Feedback.SensorToMechanismRatio = kGearboxReduction;
+
+		config.Slot0.kP = kP * 360.0;
+		config.Slot0.kD = kD * 360.0;
+		config.Slot0.kS = kS;
+		config.Slot0.kV = kV * 360.0;
+		config.Slot0.kG = kG;
+		config.Slot0.GravityType = GravityTypeValue.Arm_Cosine;
+
+		config.MotionMagic.MotionMagicCruiseVelocity =
+				kMotionMagicCruiseVelocityDegPerSec / 360.0;
+		config.MotionMagic.MotionMagicAcceleration =
+				kMotionMagicAccelerationDegPerSecSq / 360.0;
+
+		config.ClosedLoopGeneral.ContinuousWrap = false;
+
+		config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
+		config.SoftwareLimitSwitch.ForwardSoftLimitThreshold =
+				Units.degreesToRotations(kMaxAngleDeg);
+		config.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
+		config.SoftwareLimitSwitch.ReverseSoftLimitThreshold =
+				Units.degreesToRotations(kMinAngleDeg);
+
+		PhoenixUtil.applyConfigWithRetry(motor, config, 5);
 	}
 
 	@Override
 	public void periodic() {
-		Tracer.start("HoodPeriodic");
-		m_io.updateInputs(m_inputs);
-		Logger.processInputs("Hood", m_inputs);
-
-		if (DriverStation.isDisabled()) { m_io.stop(); m_setpoint = m_inputs.positionDegrees; }
-
-		m_motorOverheatAlert.set(m_inputs.temperatureCelsius > kMaxTemperature);
-
-		Logger.recordOutput("Hood/EncodersZeroed", areEncodersZeroed());
-		Logger.recordOutput("Hood/NearSetpoint", isNearSetpoint());
-		Logger.recordOutput("Hood/Setpoint", m_setpoint);
-
-		m_motorDisconnectedAlert.set(!m_inputs.motorConnected);
-		Tracer.finish("HoodPeriodic");
-	}
-
-	/**
-	 * Moves the hood to the given angle, in terms of the motor's position.
-	 *
-	 * @param angleDeg The new hood angle, in degrees.
-	 */
-	public void setHoodAngle(double angleDeg) {
-		angleDeg = MathUtil.inputModulus(angleDeg, -180, 180);
-		if (angleDeg > kMaxAngleDeg || angleDeg < kMinAngleDeg) {
-			DriverStation.reportWarning("WARNING: Hood::setHoodAngle, angle exceeds bounds (" + angleDeg + ")", true);
-			stop();
-			return;
+		if (hardwareEnabled) {
+			refreshSignals();
 		}
-		m_setpoint = angleDeg;
-		m_io.runPosition(angleDeg);
+
+		if (DriverStation.isDisabled()) {
+			stop();
+		}
+
+		motorDisconnectedAlert.set(hardwareEnabled && !motorConnected);
+		motorOverheatAlert.set(hardwareEnabled && temperatureCelsius >= kMaxTemperatureCelsius);
+
+		Logger.recordOutput("Hood/HardwareEnabled", hardwareEnabled);
+		Logger.recordOutput("Hood/MotorConnected", motorConnected);
+		Logger.recordOutput("Hood/EncodersZeroed", encodersZeroed);
+		Logger.recordOutput("Hood/ControlMode", controlMode);
+		Logger.recordOutput("Hood/RequestedSetpointDeg", requestedSetpointDeg, "degrees");
+		Logger.recordOutput("Hood/ClampedSetpointDeg", clampedSetpointDeg, "degrees");
+		Logger.recordOutput(
+				"Hood/ClampedSetpointRotations",
+				Units.degreesToRotations(clampedSetpointDeg),
+				"rotations");
+		Logger.recordOutput("Hood/PositionRotations", measuredPositionRotations, "rotations");
+		Logger.recordOutput("Hood/PositionDeg", measuredAngleDeg, "degrees");
+		Logger.recordOutput(
+				"Hood/VelocityRotationsPerSec", measuredVelocityRotationsPerSec, "rotations_per_second");
+		Logger.recordOutput("Hood/VelocityDegPerSec", measuredVelocityDegPerSec, "degrees_per_second");
+		Logger.recordOutput("Hood/PositionErrorDeg", clampedSetpointDeg - measuredAngleDeg, "degrees");
+		Logger.recordOutput("Hood/AppliedVolts", appliedVolts, "volts");
+		Logger.recordOutput("Hood/TemperatureCelsius", temperatureCelsius, "celsius");
+		Logger.recordOutput("Hood/NearSetpoint", isNearSetpoint());
+		Logger.recordOutput("Hood/AtForwardLimit", getAngle() >= kMaxAngleDeg - 1.0);
+		Logger.recordOutput("Hood/AtReverseLimit", getAngle() <= kMinAngleDeg + 1.0);
 	}
 
-	/**
-	 * Stops the hood.
-	 */
+	private void refreshSignals() {
+		motorConnected = connectedDebouncer.calculate(BaseStatusSignal.refreshAll(
+						motorVoltageSignal,
+						velocitySignal,
+						positionSignal,
+						temperatureSignal)
+				.isOK());
+
+		measuredPositionRotations = positionSignal.getValueAsDouble();
+		measuredVelocityRotationsPerSec = velocitySignal.getValueAsDouble();
+		measuredAngleDeg = Units.rotationsToDegrees(measuredPositionRotations);
+		measuredVelocityDegPerSec = Units.rotationsToDegrees(measuredVelocityRotationsPerSec);
+		appliedVolts = motorVoltageSignal.getValueAsDouble();
+		temperatureCelsius = temperatureSignal.getValueAsDouble();
+	}
+
+	public void setHoodAngle(double angleDeg) {
+		requestedSetpointDeg = angleDeg;
+		clampedSetpointDeg = MathUtil.clamp(angleDeg, kMinAngleDeg, kMaxAngleDeg);
+		controlMode = ControlMode.MOTION_MAGIC;
+
+		if (hardwareEnabled) {
+			motor.setControl(
+					motionMagicRequest.withPosition(Units.degreesToRotations(clampedSetpointDeg)));
+		} else {
+			measuredPositionRotations = Units.degreesToRotations(clampedSetpointDeg);
+			measuredVelocityRotationsPerSec = 0.0;
+			measuredAngleDeg = clampedSetpointDeg;
+			measuredVelocityDegPerSec = 0.0;
+		}
+	}
+
+	public void setVoltage(double volts) {
+		controlMode = ControlMode.VOLTAGE;
+		requestedSetpointDeg = getAngle();
+		clampedSetpointDeg = requestedSetpointDeg;
+		appliedVolts = volts;
+
+		if (hardwareEnabled) {
+			motor.setControl(voltageRequest.withOutput(volts));
+		}
+	}
+
 	public void stop() {
-		m_io.stop();
+		controlMode = ControlMode.NEUTRAL;
+		appliedVolts = 0.0;
+		if (hardwareEnabled) {
+			motor.setControl(neutralRequest);
+		}
 	}
 
-	/**
-	 * Returns the hood's current angle.
-	 *
-	 * @return The hood's current angle, in degrees.
-	 */
-	public double getAngle() { return m_inputs.positionDegrees; }
+	public double getAngle() {
+		return MathUtil.clamp(measuredAngleDeg, kMinAngleDeg, kMaxAngleDeg);
+	}
 
-	/**
-	 * Returns whether the hood is near its setpoint. Uses the default tolerance.
-	 *
-	 * @return Whether the hood is near its setpoint.
-	 */
 	public boolean isNearSetpoint() {
-		return MathUtil.isNear(0,
-				MathUtil.inputModulus(
-						Rotation2d.fromDegrees(m_setpoint).minus(Rotation2d.fromDegrees(getAngle())).getDegrees(), -180,
-						180),
-				kAngleDefaultToleranceDeg);
+		return Math.abs(clampedSetpointDeg - getAngle()) <= kAngleToleranceDeg;
 	}
 
-	/**
-	 * Returns the latest setpoint.
-	 *
-	 * @return The latest setpoint, in degrees.
-	 */
-	public double getLatestSetpoint() { return m_setpoint; }
+	public double getLatestSetpoint() {
+		return clampedSetpointDeg;
+	}
 
-	/**
-	 * Resets the encoders of the hood. Encoders are set to read the calibration angle.
-	 */
 	public void zeroEncoders() {
-		stop();
-		m_io.zeroEncoders();
-		m_isZeroed = true;
-		m_setpoint = kHoodCalibrationAngle;
+		if (hardwareEnabled) {
+			motor.setPosition(Units.degreesToRotations(kHomeAngleDeg));
+		}
+		measuredPositionRotations = Units.degreesToRotations(kHomeAngleDeg);
+		measuredVelocityRotationsPerSec = 0.0;
+		measuredAngleDeg = kHomeAngleDeg;
+		measuredVelocityDegPerSec = 0.0;
+		requestedSetpointDeg = kHomeAngleDeg;
+		clampedSetpointDeg = kHomeAngleDeg;
+		encodersZeroed = true;
 	}
 
-	/**
-	 * Returns whether the encoders have been zeroed.
-	 *
-	 * @return Whether the encoders have been zeroed.
-	 */
 	public boolean areEncodersZeroed() {
-		return m_isZeroed;
+		return encodersZeroed;
 	}
 
-	/**
-	 * Runs a quasistatic (negligble acceleration) system identification routine.
-	 *
-	 * @param direction The direction.
-	 * @return The command to run the identification test.
-	 */
 	public Command sysIdQuasistatic(Direction direction) {
-		return m_routine.quasistatic(direction);
+		return routine.quasistatic(direction);
 	}
 
-	/**
-	 * Runs a dynamic (non-negligble acceleration) system identification routine.
-	 *
-	 * @param direction The direction.
-	 * @return The command to run the identification test.
-	 */
 	public Command sysIdDynamic(Direction direction) {
-		return m_routine.dynamic(direction);
+		return routine.dynamic(direction);
 	}
 }

@@ -19,6 +19,7 @@ import static frc.robot.subsystems.intake.IntakeConstants.kRollerGearboxReductio
 import static frc.robot.subsystems.intake.IntakeConstants.kRollerMomentOfInertia;
 import static frc.robot.subsystems.intake.IntakeConstants.kRollerMotorStatorLimitAmps;
 import static frc.robot.subsystems.intake.IntakeConstants.kRollerMotorSupplyLimitAmps;
+import static frc.robot.subsystems.intake.IntakeConstants.kSSim;
 
 import frc.robot.util.sim.CustomDCMotorSim;
 import frc.robot.util.sim.CustomSingleJointedArmSim;
@@ -36,7 +37,7 @@ public class IntakeIOSim implements IntakeIO {
 
 	private ProfiledPIDController m_armPid = new ProfiledPIDController(kPSim, 0, kDSim,
 			new TrapezoidProfile.Constraints(kMotionMagicMaxVelocityDegPerSec, kMotionMagicAccelerationDegPerSecSq));
-	private ArmFeedforward m_armFeedforward = new ArmFeedforward(0, kGSim, 0);
+	private ArmFeedforward m_armFeedforward = new ArmFeedforward(kSSim, kGSim, 0);
 	private double m_closedLoopSetpoint;
 	private boolean m_isArmSetpoint = false;
 

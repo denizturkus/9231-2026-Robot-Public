@@ -16,6 +16,7 @@ import frc.robot.subsystems.shooter.hood.HoodSubsystem;
 import frc.robot.subsystems.shooter.turret.TurretSubsystem;
 import frc.robot.subsystems.vision.VisionSubsystem;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
 
@@ -35,6 +36,7 @@ public class ShootOnTheMoveCommand extends Command {
   private final Supplier<Translation2d> targetSupplier;
   private final VisionSubsystem vision;
   private final int turretVisionCameraIndex;
+  private final Consumer<ShotSolution> shotSolutionConsumer;
 
   private final LinearFilter turretVelocityFilter =
       LinearFilter.movingAverage(VELOCITY_FILTER_SAMPLES);
@@ -68,7 +70,7 @@ public class ShootOnTheMoveCommand extends Command {
       TurretSubsystem turret,
       HoodSubsystem hood,
       FlywheelSubsystem flywheel) {
-    this(drive, turret, hood, flywheel, hubTargetSupplier(), null, -1);
+    this(drive, turret, hood, flywheel, hubTargetSupplier(), null, -1, null);
   }
 
   public ShootOnTheMoveCommand(
@@ -77,7 +79,7 @@ public class ShootOnTheMoveCommand extends Command {
       HoodSubsystem hood,
       FlywheelSubsystem flywheel,
       Supplier<Translation2d> targetSupplier) {
-    this(drive, turret, hood, flywheel, targetSupplier, null, -1);
+    this(drive, turret, hood, flywheel, targetSupplier, null, -1, null);
   }
 
   public ShootOnTheMoveCommand(
@@ -88,16 +90,45 @@ public class ShootOnTheMoveCommand extends Command {
       Supplier<Translation2d> targetSupplier,
       VisionSubsystem vision,
       int turretVisionCameraIndex) {
+    this(drive, turret, hood, flywheel, targetSupplier, vision, turretVisionCameraIndex, null);
+  }
+
+  public ShootOnTheMoveCommand(
+      DriveSubsystem drive,
+      TurretSubsystem turret,
+      HoodSubsystem hood,
+      Supplier<Translation2d> targetSupplier,
+      VisionSubsystem vision,
+      int turretVisionCameraIndex,
+      Consumer<ShotSolution> shotSolutionConsumer) {
+    this(drive, turret, hood, null, targetSupplier, vision, turretVisionCameraIndex, shotSolutionConsumer);
+  }
+
+  private ShootOnTheMoveCommand(
+      DriveSubsystem drive,
+      TurretSubsystem turret,
+      HoodSubsystem hood,
+      FlywheelSubsystem flywheel,
+      Supplier<Translation2d> targetSupplier,
+      VisionSubsystem vision,
+      int turretVisionCameraIndex,
+      Consumer<ShotSolution> shotSolutionConsumer) {
     this.drive = Objects.requireNonNull(drive, "drive");
     this.turret = Objects.requireNonNull(turret, "turret");
     this.hood = Objects.requireNonNull(hood, "hood");
-    this.flywheel = Objects.requireNonNull(flywheel, "flywheel");
+    this.flywheel = flywheel;
     this.targetSupplier = Objects.requireNonNull(targetSupplier, "targetSupplier");
     this.vision = vision;
     this.turretVisionCameraIndex = turretVisionCameraIndex;
+    this.shotSolutionConsumer =
+        shotSolutionConsumer != null ? shotSolutionConsumer : (solution) -> {};
 
     setName("ShootOnTheMove");
-    addRequirements(turret, hood, flywheel);
+    if (flywheel != null) {
+      addRequirements(turret, hood, flywheel);
+    } else {
+      addRequirements(turret, hood);
+    }
   }
 
   public static Supplier<Translation2d> hubTargetSupplier() {
@@ -105,7 +136,7 @@ public class ShootOnTheMoveCommand extends Command {
   }
 
   public static Supplier<Translation2d> allianceSideTargetSupplier() {
-    return () -> AimPoints.getAllianceOutpostPosition().toTranslation2d();
+    return () -> AimPoints.getAllianceFarSidePosition().toTranslation2d();
   }
 
   public static Supplier<Translation2d> targetSupplierFor(Translation2d target) {
@@ -118,6 +149,7 @@ public class ShootOnTheMoveCommand extends Command {
     lastTurretAngle = Rotation2d.fromDegrees(turret.getAngle());
     lastHoodAngleDeg = hood.getAngle();
     latestSolution = null;
+    shotSolutionConsumer.accept(null);
   }
 
   @Override
@@ -125,6 +157,7 @@ public class ShootOnTheMoveCommand extends Command {
     Translation2d target = targetSupplier.get();
     if (target == null) {
       latestSolution = null;
+      shotSolutionConsumer.accept(null);
       Logger.recordOutput("ShootOnTheMove/HasTarget", false);
       Logger.recordOutput("ShootOnTheMove/ValidShot", false);
       return;
@@ -134,7 +167,10 @@ public class ShootOnTheMoveCommand extends Command {
 
     turret.setTurretAngle(latestSolution.turretAngle().getDegrees());
     hood.setHoodAngle(latestSolution.hoodAngleDeg());
-    flywheel.setVelocity(latestSolution.flywheelRpm());
+    shotSolutionConsumer.accept(latestSolution);
+    if (flywheel != null) {
+      flywheel.setVelocity(latestSolution.flywheelRpm());
+    }
 
     Logger.recordOutput("ShootOnTheMove/HasTarget", true);
     Logger.recordOutput("ShootOnTheMove/Target", new Pose2d(latestSolution.target(), Rotation2d.kZero));
@@ -170,9 +206,12 @@ public class ShootOnTheMoveCommand extends Command {
   @Override
   public void end(boolean interrupted) {
     latestSolution = null;
+    shotSolutionConsumer.accept(null);
     turret.stop();
     hood.stop();
-    flywheel.stop();
+    if (flywheel != null) {
+      flywheel.stop();
+    }
     Logger.recordOutput("ShootOnTheMove/HasTarget", false);
     Logger.recordOutput("ShootOnTheMove/ValidShot", false);
   }

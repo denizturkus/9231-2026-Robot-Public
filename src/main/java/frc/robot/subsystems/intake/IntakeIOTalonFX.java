@@ -15,6 +15,8 @@ import static frc.robot.subsystems.intake.IntakeConstants.kArmMotorSupplyLimitAm
 import static frc.robot.subsystems.intake.IntakeConstants.kD;
 import static frc.robot.subsystems.intake.IntakeConstants.kG;
 import static frc.robot.subsystems.intake.IntakeConstants.kIsFOC;
+import static frc.robot.subsystems.intake.IntakeConstants.kMotionMagicAccelerationDegPerSecSq;
+import static frc.robot.subsystems.intake.IntakeConstants.kMotionMagicMaxVelocityDegPerSec;
 import static frc.robot.subsystems.intake.IntakeConstants.kP;
 import static frc.robot.subsystems.intake.IntakeConstants.kRollerGearboxReduction;
 import static frc.robot.subsystems.intake.IntakeConstants.kRollerMotorCANBus;
@@ -22,6 +24,7 @@ import static frc.robot.subsystems.intake.IntakeConstants.kRollerMotorID;
 import static frc.robot.subsystems.intake.IntakeConstants.kRollerMotorInverted;
 import static frc.robot.subsystems.intake.IntakeConstants.kRollerMotorStatorLimitAmps;
 import static frc.robot.subsystems.intake.IntakeConstants.kRollerMotorSupplyLimitAmps;
+import static frc.robot.subsystems.intake.IntakeConstants.kS;
 
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.CANBus;
@@ -80,9 +83,12 @@ public class IntakeIOTalonFX implements IntakeIO {
 		armMotorConfig.MotorOutput.Inverted = kArmMotorInverted ? InvertedValue.Clockwise_Positive
 				: InvertedValue.CounterClockwise_Positive;
 		armMotorConfig.Feedback.SensorToMechanismRatio = kArmGearboxReduction;
+		armMotorConfig.Slot0.kS = kS;
 		armMotorConfig.Slot0.kP = kP * 360.0;
 		armMotorConfig.Slot0.kD = kD * 360.0;
 		armMotorConfig.Slot0.kG = kG;
+		armMotorConfig.MotionMagic.MotionMagicCruiseVelocity = kMotionMagicMaxVelocityDegPerSec / 360.0;
+		armMotorConfig.MotionMagic.MotionMagicAcceleration = kMotionMagicAccelerationDegPerSecSq / 360.0;
 		armMotorConfig.Slot0.GravityType = GravityTypeValue.Arm_Cosine;
 		armMotorConfig.ClosedLoopGeneral.ContinuousWrap = true;
 

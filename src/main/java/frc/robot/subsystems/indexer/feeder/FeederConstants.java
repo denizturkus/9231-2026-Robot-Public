@@ -6,35 +6,35 @@ import edu.wpi.first.math.system.plant.DCMotor; //TODO CHANGE FEEDER CONSTANTS
  * The constants required for the feeder subsystem.
  */
 public class FeederConstants {
-	// TODO(new robot): Verify feeder motor CAN ID and CAN bus assignment.
+	// TODO: Verify feeder motor CAN ID and CAN bus assignment.
 	// Motor IDs
 	public static final int kMotorID = 12;
 	public static final String kMotorCANBus = "";
 
-	// TODO(new robot): Verify feeder feed/unfeed voltages on the new robot.
+	// TODO: Verify feeder feed/unfeed voltages on the new robot.
 	// Control parameters
 	// Voltage when intaking, ~2500 RPM for the Kraken X60.
 	public static final double kFeedVoltage = 6.5;
 	public static final double kUnfeedVoltage = -3.5;
 
-	// TODO(new robot): Verify feeder gearbox reduction on the new robot.
+	// TODO: Verify feeder gearbox reduction on the new robot.
 	// Gearbox reduction
-	public static final double kGearboxReduction = 0.25; // A 1:4 ratio (I/O)
+	public static final double kGearboxReduction = 4;
 
-	// TODO(new robot): Revisit current limits if the electrical package differs.
+	// TODO: Revisit current limits if the electrical package differs.
 	// Current limit for the motor
 	public static final double kMotorSupplyLimitAmps = 30;
 	public static final double kMotorStatorLimitAmps = 45;
 
-    // TODO(new robot): Verify peak duty-cycle limits on the new robot.
+    // TODO: Verify peak duty-cycle limits on the new robot.
     public static final double kPeakForwardDutyCycle = 0.6;
     public static final double kPeakReverseDutyCycle = 0.6;
 
 	public static final boolean kIsFOC = true;
 
-	// TODO(new robot): Verify feeder motor direction on the new robot.
+	// TODO: Verify feeder motor direction on the new robot.
 	// Inversions
-	public static final boolean kMotorInverted = true; //inverted::yes
+	public static final boolean kMotorInverted = true; 
 
 	// Sim-only values below; ignore for the cloned real robot unless you care about simulation fidelity.
 	// Simulation data

@@ -48,13 +48,7 @@ import frc.robot.subsystems.indexer.feeder.FeederSubsystem;
 import frc.robot.subsystems.indexer.feeder.FeederIOTalonFX;
 import frc.robot.subsystems.indexer.feeder.FeederIO;
 import frc.robot.subsystems.indexer.feeder.FeederIOSim;
-import frc.robot.subsystems.shooter.flywheel.FlywheelIOTalonFX;
 import frc.robot.subsystems.shooter.flywheel.FlywheelSubsystem;
-import frc.robot.subsystems.shooter.flywheel.FlywheelIO;
-import frc.robot.subsystems.shooter.flywheel.FlywheelIOSim;
-import frc.robot.subsystems.shooter.hood.HoodIO;
-import frc.robot.subsystems.shooter.hood.HoodIOTalonFX;
-import frc.robot.subsystems.shooter.hood.HoodIOSim;
 import frc.robot.subsystems.shooter.hood.HoodSubsystem;
 import frc.robot.subsystems.shooter.turret.TurretSubsystem;
 import frc.robot.subsystems.vision.VisionConstants;
@@ -117,9 +111,9 @@ public class RobotContainer {
                 intake = new IntakeSubsystem(new IntakeIOTalonFX());
                 hopper = new HopperSubsystem();
                 feeder = new FeederSubsystem(new FeederIOTalonFX());
-                flywheel = new FlywheelSubsystem(new FlywheelIOTalonFX());
+                flywheel = new FlywheelSubsystem();
                 turret = new TurretSubsystem();
-                hood = new HoodSubsystem(new HoodIOTalonFX());
+                hood = new HoodSubsystem();
                 this.vision = new VisionSubsystem(
                         drive,
                         new VisionIOLimelight(
@@ -132,7 +126,7 @@ public class RobotContainer {
                                 drive::getRotation,
                                 () -> Math.toDegrees(drive.getRobotRelativeSpeeds().omegaRadiansPerSecond),
                                 () -> VisionConstants.getTurretCameraTransform(Rotation2d.fromDegrees(turret.getAngle()))));
-                superstructure = new Superstructure(drive, intake, hopper, feeder, turret, flywheel, hood,vision);
+                superstructure = new Superstructure(drive, intake, hopper, feeder, turret, flywheel, hood, vision);
 
                 break;
             case SIM:
@@ -154,9 +148,9 @@ public class RobotContainer {
                 intake = new IntakeSubsystem(new IntakeIOSim());
                 hopper = new HopperSubsystem();
                 feeder = new FeederSubsystem(new FeederIOSim());
-                flywheel = new FlywheelSubsystem(new FlywheelIOSim());
+                flywheel = new FlywheelSubsystem();
                 turret = new TurretSubsystem();
-                hood = new HoodSubsystem(new HoodIOSim());
+                hood = new HoodSubsystem();
                 vision = new VisionSubsystem(
                         drive,
                         new VisionIOPhotonVisionSim(
@@ -184,9 +178,9 @@ public class RobotContainer {
                 intake = new IntakeSubsystem(new IntakeIO() {});
                 hopper = new HopperSubsystem();
                 feeder = new FeederSubsystem(new FeederIO() {});
-                flywheel = new FlywheelSubsystem(new FlywheelIO() {});
+                flywheel = new FlywheelSubsystem();
                 turret = new TurretSubsystem();
-                hood = new HoodSubsystem(new HoodIO() {});
+                hood = new HoodSubsystem();
                 superstructure = new Superstructure(drive, intake, hopper, feeder, turret, flywheel, hood, vision);
 
                 break;
@@ -206,6 +200,18 @@ public class RobotContainer {
                 "Drive SysId (Quasistatic Reverse)", drive.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
         autoChooser.addOption("Drive SysId (Dynamic Forward)", drive.sysIdDynamic(SysIdRoutine.Direction.kForward));
         autoChooser.addOption("Drive SysId (Dynamic Reverse)", drive.sysIdDynamic(SysIdRoutine.Direction.kReverse));
+        autoChooser.addOption(
+                "Flywheel SysId (Quasistatic Forward)",
+                flywheel.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
+        autoChooser.addOption(
+                "Flywheel SysId (Quasistatic Reverse)",
+                flywheel.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
+        autoChooser.addOption(
+                "Flywheel SysId (Dynamic Forward)",
+                flywheel.sysIdDynamic(SysIdRoutine.Direction.kForward));
+        autoChooser.addOption(
+                "Flywheel SysId (Dynamic Reverse)",
+                flywheel.sysIdDynamic(SysIdRoutine.Direction.kReverse));
 
         m_allianceChooser = new LoggedDashboardChooser<>("Alliance Chooser");
 
@@ -223,11 +229,15 @@ public class RobotContainer {
     private void initializeRobotState() {
         switch (Constants.currentMode) {
             case REAL:
+                intake.zeroEncoders();
                 turret.zeroEncoders();
+                hood.zeroEncoders();
                 drive.setPose(Constants.kStartingPose);
                 break;
             case SIM:
+                intake.zeroEncoders();
                 turret.zeroEncoders();
+                hood.zeroEncoders();
                 drive.setPose(driveSimulation.getSimulatedDriveTrainPose());
                 break;
             default:
@@ -273,13 +283,21 @@ public class RobotContainer {
         driverController.start().onTrue(Commands.runOnce(resetGyro, drive).ignoringDisable(true));
 
         //change these to operator controller
-        operatorController.a().onTrue(superstructure.StartIntakingCommand());
-        operatorController.b().onTrue(superstructure.StopIntakingCommand());
+        //operatorController.a().onTrue(superstructure.StartIntakingCommand());
+        //operatorController.b().onTrue(superstructure.StopIntakingCommand());
         driverController.b().whileTrue(superstructure.ShootFuelCommand());
-        driverController.rightTrigger().whileTrue(superstructure.FlywheelOpenLoopCommand());
+        driverController.rightTrigger().whileTrue(superstructure.FlywheelTestCommand());
         driverController.rightBumper().onTrue(superstructure.TargetHubCommand());
         driverController.leftBumper().onTrue(superstructure.TargetAllianceSideCommand());
         driverController.leftTrigger().onTrue(superstructure.CancelTargetingCommand());
+
+        operatorController.a().onTrue(superstructure.IntakeArmExtendTestCommand());
+        operatorController.b().onTrue(superstructure.IntakeArmRetractTestCommand());
+        operatorController.x().whileTrue(superstructure.FlywheelTestCommand());
+        operatorController.y().whileTrue(superstructure.FlywheelOpenLoopCommand());
+        operatorController.rightBumper().onTrue(superstructure.SetTurretAngleTestCommand());
+        operatorController.leftBumper().onTrue(superstructure.SetHoodAngleTestCommand());
+        operatorController.start().onTrue(Commands.parallel(Commands.runOnce(turret::zeroEncoders), Commands.runOnce(hood::zeroEncoders)));
 
     }
     /**

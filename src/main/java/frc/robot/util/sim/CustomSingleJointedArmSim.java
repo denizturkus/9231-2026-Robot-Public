@@ -26,7 +26,7 @@ import org.ironmaple.simulation.motorsims.SimulatedBattery;
 /** Represents a simulated single jointed arm mechanism. */
 public class CustomSingleJointedArmSim extends LinearSystemSim<N2, N1, N2> implements Simulatable {
 
-	// TODO issue, internal measurements receive noised measurements
+	// issue, internal measurements receive noised measurements
 
 	// The gearbox for the arm.
 	private final DCMotor m_gearbox;
