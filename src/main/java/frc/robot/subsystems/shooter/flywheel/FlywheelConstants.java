@@ -12,10 +12,10 @@ public final class FlywheelConstants {
     public static final double kGearboxReduction = 15.0 / 33.0;
 
     // Phoenix closed-loop gains in volts per RPM and volts per RPM/sec.
-    public static final double kP = 0.0025;
+    public static final double kP = 0.003; 
     public static final double kD = 0.0;
-    public static final double kS = 0.0;
-    public static final double kV = 0.00138;
+    public static final double kS = 0.52557;
+    public static final double kV = 0.058992 / 60.0; //0.00136
 
     public static final boolean kUseFOC = true;
     public static final boolean kLeadMotorInverted = false;
@@ -28,7 +28,10 @@ public final class FlywheelConstants {
 
     // Soft max, not the hardware limit.
     public static final double kMaxAllowedRPM = 6000.0;
+    // Require a tighter band to start feeding, then allow a wider hold band so
+    // shot-to-shot RPM dips do not chatter the feeder/hopper.
     public static final double kVelocityToleranceRPM = 50.0;
+    public static final double kVelocityHysteresisToleranceRPM = 150.0;
 
     public static final double kSysIdVoltageRampRate = 0.6;
     public static final double kSysIdVoltageStep = 3.0;

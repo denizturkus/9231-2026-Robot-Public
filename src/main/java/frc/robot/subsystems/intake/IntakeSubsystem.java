@@ -10,12 +10,14 @@ import static frc.robot.subsystems.intake.IntakeConstants.kOuttakeRollerVoltage;
 import static frc.robot.subsystems.intake.IntakeConstants.kRollerMaxTemperature;
 import static frc.robot.subsystems.intake.IntakeConstants.kRollerMotorID;
 
+import com.ctre.phoenix6.hardware.ParentDevice;
 import frc.robot.util.Tracer;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import java.util.List;
 import org.littletonrobotics.junction.Logger;
 
 /**
@@ -186,4 +188,11 @@ public class IntakeSubsystem extends SubsystemBase {
 	 * @return The latest setpoint of the intake arm, in degrees.
 	 */
 	public double getLatestArmSetpoint() { return m_latestSetpoint; }
+
+	/**
+	 * Returns the intake motors available to Phoenix Orchestra.
+	 */
+	public List<ParentDevice> getOrchestraDevices() {
+		return m_io.getOrchestraDevices();
+	}
 }

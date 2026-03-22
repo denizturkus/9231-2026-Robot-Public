@@ -45,6 +45,7 @@ import edu.wpi.first.units.measure.Current;
 import edu.wpi.first.units.measure.Temperature;
 import edu.wpi.first.units.measure.Voltage;
 import frc.robot.util.PhoenixUtil;
+import java.util.List;
 
 /** The IO hardware implementation for intake hardware interacions with the TalonFX. */
 public class IntakeIOTalonFX implements IntakeIO {
@@ -182,5 +183,10 @@ public class IntakeIOTalonFX implements IntakeIO {
 	@Override
 	public void stopArm() {
 		m_armTalon.stopMotor();
+	}
+
+	@Override
+	public List<ParentDevice> getOrchestraDevices() {
+		return List.of(m_rollerTalon, m_armTalon);
 	}
 }

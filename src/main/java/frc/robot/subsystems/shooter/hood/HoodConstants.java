@@ -12,7 +12,7 @@ public final class HoodConstants {
 
 	public static final double kMinAngleDeg = 0;
 	public static final double kHomeAngleDeg = kMinAngleDeg;
-	public static final double kMaxAngleDeg = 32; //soft limit for now
+	public static final double kMaxAngleDeg = 32; // tested hard limit
 
 	// Previous value for tuned-ready checks:
 	public static final double kAngleToleranceDeg = 2.0;

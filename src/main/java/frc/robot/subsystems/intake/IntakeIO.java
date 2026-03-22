@@ -1,5 +1,7 @@
 package frc.robot.subsystems.intake;
 
+import com.ctre.phoenix6.hardware.ParentDevice;
+import java.util.List;
 import org.littletonrobotics.junction.AutoLog;
 
 /**
@@ -75,5 +77,12 @@ public interface IntakeIO {
 	 */
 	public default void stopArm() {
 		runArmVolts(0.0);
+	}
+
+	/**
+	 * Returns the devices that can be used by Phoenix Orchestra.
+	 */
+	public default List<ParentDevice> getOrchestraDevices() {
+		return List.of();
 	}
 }

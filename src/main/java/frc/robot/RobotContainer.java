@@ -18,12 +18,15 @@ import org.ironmaple.simulation.drivesims.SwerveDriveSimulation;
 import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 
+import com.ctre.phoenix6.Orchestra;
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.auto.NamedCommands;
 
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
+import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -67,6 +70,8 @@ public class RobotContainer {
     //drivetrain
     private final DriveSubsystem drive;
     private SwerveDriveSimulation driveSimulation = null;
+    private final Orchestra orchestra = new Orchestra();
+    private boolean musicLoaded = false;
 
     //vision
     private final VisionSubsystem vision;
@@ -282,7 +287,7 @@ public class RobotContainer {
                 : () -> drive.setPose(new Pose2d(drive.getPose().getTranslation(), new Rotation2d())); // zero gyro
         driverController.start().onTrue(Commands.runOnce(resetGyro, drive).ignoringDisable(true));
 
-        //change these to operator controller
+        //change these to operator controller 
         //operatorController.a().onTrue(superstructure.StartIntakingCommand());
         //operatorController.b().onTrue(superstructure.StopIntakingCommand());
         driverController.b().whileTrue(superstructure.ShootFuelCommand());
@@ -299,7 +304,55 @@ public class RobotContainer {
         operatorController.leftBumper().onTrue(superstructure.SetHoodAngleTestCommand());
         operatorController.start().onTrue(Commands.parallel(Commands.runOnce(turret::zeroEncoders), Commands.runOnce(hood::zeroEncoders)));
 
+        musicController.leftStick().onTrue(Commands.runOnce(this::configureOrchestra).ignoringDisable(true));
+        musicController.start().onTrue(Commands.runOnce(this::startMusic).ignoringDisable(true));
+        musicController.a().onTrue(Commands.runOnce(() -> loadMusic("IAMMUSIC/rickroll.chrp")).ignoringDisable(true));
+        musicController.b().onTrue(Commands.runOnce(() -> loadMusic("IAMMUSIC/bloodytears.chrp")).ignoringDisable(true));
+        musicController.x().onTrue(Commands.runOnce(() -> loadMusic("IAMMUSIC/bohemianrhapsody.chrp")).ignoringDisable(true));
+        musicController.y().onTrue(Commands.runOnce(() -> loadMusic("IAMMUSIC/hesapirate.chrp")).ignoringDisable(true));
+        musicController.rightBumper().onTrue(Commands.runOnce(() -> loadMusic("IAMMUSIC/thunderstruck.chrp")).ignoringDisable(true));
+        musicController.leftBumper().onTrue(Commands.runOnce(() -> loadMusic("IAMMUSIC/stairway.chrp")).ignoringDisable(true));
+        musicController.rightTrigger().onTrue(Commands.runOnce(() -> loadMusic("IAMMUSIC/evangelion.chrp")).ignoringDisable(true));
+        musicController.leftTrigger().onTrue(Commands.runOnce(() -> loadMusic("IAMMUSIC/fingersnap.chrp")).ignoringDisable(true));
+        musicController.back().onTrue(Commands.runOnce(this::stopMusic, drive).ignoringDisable(true));
+
     }
+
+    private void configureOrchestra() {
+        if (Constants.currentMode != Constants.Mode.REAL) {
+            return;
+        }
+
+        orchestra.stop();
+        orchestra.clearInstruments();
+        drive.getOrchestraDevices().forEach(orchestra::addInstrument);
+        flywheel.getOrchestraDevices().forEach(orchestra::addInstrument);
+        intake.getOrchestraDevices().forEach(orchestra::addInstrument);
+    }
+
+    private void loadMusic(String song) {
+        String path = Filesystem.getDeployDirectory().toPath().resolve(song).toString();
+        musicLoaded = orchestra.loadMusic(path).isOK();
+        if (!musicLoaded) {
+            DriverStation.reportError("Failed to load music: " + path, false);
+        }
+    }
+
+    private void startMusic() {
+        if (!musicLoaded) {
+            return;
+        }
+
+        drive.stop();
+        if (!orchestra.play().isOK()) {
+            DriverStation.reportError("Failed to play music.", false);
+        }
+    }
+
+    private void stopMusic() {
+        orchestra.stop();
+    }
+
     /**
      * Use this to pass the autonomous command to the main {@link Robot} class.
      *

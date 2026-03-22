@@ -23,6 +23,7 @@ import edu.wpi.first.units.measure.AngularVelocity;
 import edu.wpi.first.units.measure.Current;
 import edu.wpi.first.units.measure.Voltage;
 import frc.robot.Constants;
+import java.util.List;
 
 
 public abstract class ModuleIOTalonFX implements ModuleIO {
@@ -194,5 +195,9 @@ public abstract class ModuleIOTalonFX implements ModuleIO {
                     case Voltage -> positionVoltageRequest.withPosition(rotation.getRotations());
                     case TorqueCurrentFOC -> positionTorqueCurrentRequest.withPosition(rotation.getRotations());
                 });
+    }
+
+    public List<ParentDevice> getOrchestraDevices() {
+        return List.of(driveTalon, turnTalon);
     }
 }

@@ -18,6 +18,7 @@ package frc.robot.subsystems.drive;
 import static edu.wpi.first.units.Units.*;
 
 import com.ctre.phoenix6.CANBus;
+import com.ctre.phoenix6.hardware.ParentDevice;
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.config.ModuleConfig;
 import com.pathplanner.lib.config.PIDConstants;
@@ -55,6 +56,8 @@ import frc.robot.Constants;
 import frc.robot.Constants.Mode;
 import frc.robot.subsystems.vision.VisionSubsystem;
 import frc.robot.util.LocalADStarAK;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -375,6 +378,14 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
             output += modules[i].getFFCharacterizationVelocity() / 4.0;
         }
         return output;
+    }
+
+    public List<ParentDevice> getOrchestraDevices() {
+        List<ParentDevice> devices = new ArrayList<>();
+        for (var module : modules) {
+            devices.addAll(module.getOrchestraDevices());
+        }
+        return List.copyOf(devices);
     }
 
     /** Returns the current odometry pose. */
