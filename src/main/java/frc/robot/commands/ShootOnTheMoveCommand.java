@@ -1,5 +1,8 @@
 package frc.robot.commands;
 
+import static frc.robot.subsystems.shooter.turret.TurretConstants.kMaxAngleDeg;
+import static frc.robot.subsystems.shooter.turret.TurretConstants.kMinAngleDeg;
+
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.filter.LinearFilter;
 import edu.wpi.first.math.geometry.Pose2d;
@@ -28,6 +31,8 @@ public class ShootOnTheMoveCommand extends Command {
               Math.round(
                   Constants.ShootOnTheMoveConstants.kVelocityFilterWindowSeconds
                       / Constants.kLoopPeriodSeconds));
+  private static final int TURRET_VISION_ACQUIRE_LOOPS =
+      loopsForSeconds(Constants.ShootOnTheMoveConstants.kTurretVisionAcquireSeconds);
 
   private final DriveSubsystem drive;
   private final TurretSubsystem turret;
@@ -38,13 +43,17 @@ public class ShootOnTheMoveCommand extends Command {
   private final int turretVisionCameraIndex;
   private final Consumer<ShotSolution> shotSolutionConsumer;
 
-  private final LinearFilter turretVelocityFilter =
-      LinearFilter.movingAverage(VELOCITY_FILTER_SAMPLES);
-  private final LinearFilter hoodVelocityFilter =
-      LinearFilter.movingAverage(VELOCITY_FILTER_SAMPLES);
+  private LinearFilter turretVelocityFilter = createVelocityFilter();
+  private LinearFilter hoodVelocityFilter = createVelocityFilter();
+  private LinearFilter turretVisionTxFilter = createTurretVisionTxFilter();
 
-  private Rotation2d lastTurretAngle = Rotation2d.kZero;
+  private double lastTurretAngleDeg = 0.0;
   private double lastHoodAngleDeg = 0.0;
+  private boolean turretVisionLocked = false;
+  private int turretVisionSeenLoops = 0;
+  private int turretVisionMissedLoops = 0;
+  private double filteredTurretVisionTxDeg = 0.0;
+  private int lastTurretVisionTagId = -1;
   private ShotSolution latestSolution;
 
   public record ShotSolution(
@@ -54,12 +63,17 @@ public class ShootOnTheMoveCommand extends Command {
       Translation2d turretPosition,
       Translation2d lookaheadTurretPosition,
       double distanceMeters,
+      boolean turretVisionRawAvailable,
       boolean turretVisionActive,
+      int turretVisionTagId,
       Rotation2d turretAngle,
       Rotation2d odometryTurretAngle,
       Rotation2d leadCompensation,
       Rotation2d turretVisionTx,
+      double turretVisionFilteredTxDeg,
       Rotation2d turretVisionLineOfSightAngle,
+      double turretVisionAppliedCorrectionDeg,
+      boolean turretVisionCorrectionRejected,
       double turretVelocityDegPerSecond,
       double hoodAngleDeg,
       double hoodVelocityDegPerSecond,
@@ -146,8 +160,16 @@ public class ShootOnTheMoveCommand extends Command {
 
   @Override
   public void initialize() {
-    lastTurretAngle = Rotation2d.fromDegrees(turret.getAngle());
+    turretVelocityFilter = createVelocityFilter();
+    hoodVelocityFilter = createVelocityFilter();
+    turretVisionTxFilter = createTurretVisionTxFilter();
+    lastTurretAngleDeg = turret.getAngle();
     lastHoodAngleDeg = hood.getAngle();
+    turretVisionLocked = false;
+    turretVisionSeenLoops = 0;
+    turretVisionMissedLoops = 0;
+    filteredTurretVisionTxDeg = 0.0;
+    lastTurretVisionTagId = -1;
     latestSolution = null;
     shotSolutionConsumer.accept(null);
   }
@@ -182,7 +204,14 @@ public class ShootOnTheMoveCommand extends Command {
         "ShootOnTheMove/PredictedTurretPosition",
         new Pose2d(latestSolution.lookaheadTurretPosition(), Rotation2d.kZero));
     Logger.recordOutput("ShootOnTheMove/DistanceMeters", latestSolution.distanceMeters());
+    Logger.recordOutput(
+        "ShootOnTheMove/TurretVisionRawAvailable", latestSolution.turretVisionRawAvailable());
     Logger.recordOutput("ShootOnTheMove/TurretVisionActive", latestSolution.turretVisionActive());
+    Logger.recordOutput("ShootOnTheMove/TurretVisionTagId", latestSolution.turretVisionTagId());
+    Logger.recordOutput(
+        "ShootOnTheMove/TurretVisionTargetArea", vision != null && turretVisionCameraIndex >= 0
+            ? vision.getTargetArea(turretVisionCameraIndex)
+            : 0.0);
     Logger.recordOutput("ShootOnTheMove/TurretAngleDeg", latestSolution.turretAngle().getDegrees());
     Logger.recordOutput(
         "ShootOnTheMove/OdometryTurretAngleDeg", latestSolution.odometryTurretAngle().getDegrees());
@@ -192,8 +221,16 @@ public class ShootOnTheMoveCommand extends Command {
     Logger.recordOutput(
         "ShootOnTheMove/TurretVisionTxDeg", latestSolution.turretVisionTx().getDegrees());
     Logger.recordOutput(
+        "ShootOnTheMove/TurretVisionFilteredTxDeg", latestSolution.turretVisionFilteredTxDeg());
+    Logger.recordOutput(
         "ShootOnTheMove/TurretVisionLineOfSightAngleDeg",
         latestSolution.turretVisionLineOfSightAngle().getDegrees());
+    Logger.recordOutput(
+        "ShootOnTheMove/TurretVisionAppliedCorrectionDeg",
+        latestSolution.turretVisionAppliedCorrectionDeg());
+    Logger.recordOutput(
+        "ShootOnTheMove/TurretVisionCorrectionRejected",
+        latestSolution.turretVisionCorrectionRejected());
     Logger.recordOutput(
         "ShootOnTheMove/TurretVelocityDegPerSec", latestSolution.turretVelocityDegPerSecond());
     Logger.recordOutput("ShootOnTheMove/HoodAngleDeg", latestSolution.hoodAngleDeg());
@@ -243,37 +280,72 @@ public class ShootOnTheMoveCommand extends Command {
       lookaheadDistance = lookaheadTurretPosition.getDistance(target);
     }
 
-    Rotation2d turretAngle =
+    Rotation2d odometryTurretAngle =
         target.minus(lookaheadTurretPosition).getAngle().minus(estimatedPose.getRotation());
     Rotation2d odometryLineOfSightTurretAngle =
         target.minus(turretPosition).getAngle().minus(estimatedPose.getRotation());
-    Rotation2d leadCompensation = turretAngle.minus(odometryLineOfSightTurretAngle);
+    Rotation2d leadCompensation = odometryTurretAngle.minus(odometryLineOfSightTurretAngle);
+    Rotation2d turretAngle = odometryTurretAngle;
+    boolean turretVisionRawAvailable = shouldUseTurretVision();
+    if (turretVisionRawAvailable) {
+      double rawTurretVisionTxDeg = vision.getTargetX(turretVisionCameraIndex).getDegrees();
+      if (!turretVisionLocked && turretVisionSeenLoops == 0) {
+        turretVisionTxFilter = createTurretVisionTxFilter();
+        filteredTurretVisionTxDeg = rawTurretVisionTxDeg;
+      } else {
+        filteredTurretVisionTxDeg = turretVisionTxFilter.calculate(rawTurretVisionTxDeg);
+      }
+      lastTurretVisionTagId = vision.getTargetTagId(turretVisionCameraIndex);
+    }
+    boolean turretVisionActive = updateTurretVisionLock(turretVisionRawAvailable);
+    int turretVisionTagId = turretVisionActive ? lastTurretVisionTagId : -1;
     Rotation2d turretVisionTx = Rotation2d.kZero;
     Rotation2d turretVisionLineOfSightAngle = Rotation2d.kZero;
-    boolean turretVisionActive = shouldUseTurretVision();
+    double turretVisionAppliedCorrectionDeg = 0.0;
+    boolean turretVisionCorrectionRejected = false;
 
     if (turretVisionActive) {
-      turretVisionTx = vision.getTargetX(turretVisionCameraIndex);
+      turretVisionTx = Rotation2d.fromDegrees(applyTurretVisionTxDeadband(filteredTurretVisionTxDeg));
       turretVisionLineOfSightAngle =
           Rotation2d.fromDegrees(turret.getAngle())
               .minus(turretVisionTx)
               .plus(
                   Rotation2d.fromDegrees(
                       Constants.ShootOnTheMoveConstants.kTurretVisionAimOffsetDegrees));
-      turretAngle = turretVisionLineOfSightAngle.plus(leadCompensation);
+      double turretVisionCorrectionDeg =
+          shortestAngleDeltaDegrees(
+              turretVisionLineOfSightAngle.getDegrees(),
+              odometryLineOfSightTurretAngle.getDegrees());
+
+      if (shouldRejectVisionCorrection(odometryTurretAngle.getDegrees(), turretVisionCorrectionDeg)) {
+        turretVisionCorrectionRejected = true;
+      } else {
+        turretVisionAppliedCorrectionDeg =
+            MathUtil.clamp(
+                turretVisionCorrectionDeg
+                    * Constants.ShootOnTheMoveConstants.kTurretVisionBlendFactor,
+                -Constants.ShootOnTheMoveConstants.kTurretVisionMaxCorrectionDegrees,
+                Constants.ShootOnTheMoveConstants.kTurretVisionMaxCorrectionDegrees);
+        turretAngle =
+            odometryLineOfSightTurretAngle
+                .plus(Rotation2d.fromDegrees(turretVisionAppliedCorrectionDeg))
+                .plus(leadCompensation);
+      }
     }
 
     double hoodAngleDeg =
         Constants.ShootOnTheMoveConstants.kHoodAngleDegrees.get(clampDistance(lookaheadDistance));
     double flywheelRpm =
         Constants.ShootOnTheMoveConstants.kFlywheelSpeedRpm.get(clampDistance(lookaheadDistance));
+    double turretAngleDeg = turretAngle.getDegrees();
     double turretVelocityDegPerSecond =
         turretVelocityFilter.calculate(
-            turretAngle.minus(lastTurretAngle).getDegrees() / Constants.kLoopPeriodSeconds);
+            shortestAngleDeltaDegrees(turretAngleDeg, lastTurretAngleDeg)
+                / Constants.kLoopPeriodSeconds);
     double hoodVelocityDegPerSecond =
         hoodVelocityFilter.calculate((hoodAngleDeg - lastHoodAngleDeg) / Constants.kLoopPeriodSeconds);
 
-    lastTurretAngle = turretAngle;
+    lastTurretAngleDeg = turretAngleDeg;
     lastHoodAngleDeg = hoodAngleDeg;
 
     return new ShotSolution(
@@ -284,12 +356,17 @@ public class ShootOnTheMoveCommand extends Command {
         turretPosition,
         lookaheadTurretPosition,
         lookaheadDistance,
+        turretVisionRawAvailable,
         turretVisionActive,
+        turretVisionTagId,
         turretAngle,
-        target.minus(lookaheadTurretPosition).getAngle().minus(estimatedPose.getRotation()),
+        odometryLineOfSightTurretAngle,
         leadCompensation,
         turretVisionTx,
+        filteredTurretVisionTxDeg,
         turretVisionLineOfSightAngle,
+        turretVisionAppliedCorrectionDeg,
+        turretVisionCorrectionRejected,
         turretVelocityDegPerSecond,
         hoodAngleDeg,
         hoodVelocityDegPerSecond,
@@ -328,10 +405,81 @@ public class ShootOnTheMoveCommand extends Command {
         Constants.ShootOnTheMoveConstants.kMaxDistanceMeters);
   }
 
+  private static int loopsForSeconds(double seconds) {
+    return Math.max(1, (int) Math.ceil(seconds / Constants.kLoopPeriodSeconds));
+  }
+
+  private static LinearFilter createVelocityFilter() {
+    return LinearFilter.movingAverage(VELOCITY_FILTER_SAMPLES);
+  }
+
+  private static LinearFilter createTurretVisionTxFilter() {
+    return LinearFilter.singlePoleIIR(
+        Constants.ShootOnTheMoveConstants.kTurretVisionTxFilterTimeConstantSeconds,
+        Constants.kLoopPeriodSeconds);
+  }
+
+  private static double shortestAngleDeltaDegrees(double currentAngleDeg, double previousAngleDeg) {
+    return MathUtil.inputModulus(currentAngleDeg - previousAngleDeg, -180.0, 180.0);
+  }
+
+  private static double applyTurretVisionTxDeadband(double txDeg) {
+    return Math.abs(txDeg) < Constants.ShootOnTheMoveConstants.kTurretVisionTxDeadbandDegrees
+        ? 0.0
+        : txDeg;
+  }
+
+  private boolean updateTurretVisionLock(boolean hasRawTarget) {
+    if (hasRawTarget) {
+      turretVisionSeenLoops++;
+      turretVisionMissedLoops = 0;
+      if (!turretVisionLocked && turretVisionSeenLoops >= TURRET_VISION_ACQUIRE_LOOPS) {
+        turretVisionLocked = true;
+      }
+      return turretVisionLocked;
+    }
+
+    turretVisionSeenLoops = 0;
+    turretVisionLocked = false;
+    turretVisionMissedLoops = 0;
+    filteredTurretVisionTxDeg = 0.0;
+    lastTurretVisionTagId = -1;
+    return turretVisionLocked;
+  }
+
+  private boolean shouldRejectVisionCorrection(
+      double odometryTurretAngleDeg, double turretVisionCorrectionDeg) {
+    if (Math.abs(turretVisionCorrectionDeg)
+        > Constants.ShootOnTheMoveConstants.kTurretVisionMaxOdometryDisagreementDegrees) {
+      return true;
+    }
+
+    double boundaryMarginDeg =
+        Constants.ShootOnTheMoveConstants.kTurretVisionBoundaryMarginDegrees;
+    return pushesTowardCableLimit(turret.getAngle(), turretVisionCorrectionDeg, boundaryMarginDeg)
+        || pushesTowardCableLimit(odometryTurretAngleDeg, turretVisionCorrectionDeg, boundaryMarginDeg);
+  }
+
+  private static boolean pushesTowardCableLimit(
+      double angleDeg, double correctionDeg, double boundaryMarginDeg) {
+    return (angleDeg >= kMaxAngleDeg - boundaryMarginDeg && correctionDeg > 0.0)
+        || (angleDeg <= kMinAngleDeg + boundaryMarginDeg && correctionDeg < 0.0);
+  }
+
   private boolean shouldUseTurretVision() {
-    return Constants.ShootOnTheMoveConstants.kUseTurretVisionCorrection
-        && vision != null
-        && turretVisionCameraIndex >= 0
-        && vision.hasTarget(turretVisionCameraIndex);
+    if (!Constants.ShootOnTheMoveConstants.kUseTurretVisionCorrection
+        || vision == null
+        || turretVisionCameraIndex < 0) {
+      return false;
+    }
+
+    if (!vision.hasTarget(turretVisionCameraIndex)
+        || vision.getTargetArea(turretVisionCameraIndex)
+            < Constants.ShootOnTheMoveConstants.kTurretVisionMinTargetArea) {
+      return false;
+    }
+
+    return Math.abs(drive.getRobotRelativeSpeeds().omegaRadiansPerSecond)
+        <= Constants.ShootOnTheMoveConstants.kTurretVisionMaxAngularVelocityRadPerSec;
   }
 }

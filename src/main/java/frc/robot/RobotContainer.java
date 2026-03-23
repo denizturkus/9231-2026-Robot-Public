@@ -130,7 +130,8 @@ public class RobotContainer {
                                 VisionConstants.camera1Name,
                                 drive::getRotation,
                                 () -> Math.toDegrees(drive.getRobotRelativeSpeeds().omegaRadiansPerSecond),
-                                () -> VisionConstants.getTurretCameraTransform(Rotation2d.fromDegrees(turret.getAngle()))));
+                                () -> VisionConstants.getTurretCameraTransform(Rotation2d.fromDegrees(turret.getAngle())),
+                                VisionConstants.getSimpleTargetAllowedTagIds(VisionConstants.turretCameraIndex)));
                 superstructure = new Superstructure(drive, intake, hopper, feeder, turret, flywheel, hood, vision);
 
                 break;
@@ -290,14 +291,15 @@ public class RobotContainer {
         //change these to operator controller 
         //operatorController.a().onTrue(superstructure.StartIntakingCommand());
         //operatorController.b().onTrue(superstructure.StopIntakingCommand());
-        driverController.b().whileTrue(superstructure.ShootFuelCommand());
+        driverController.x().whileTrue(superstructure.ShootFuelCommand());
         driverController.rightTrigger().whileTrue(superstructure.FlywheelTestCommand());
         driverController.rightBumper().onTrue(superstructure.TargetHubCommand());
         driverController.leftBumper().onTrue(superstructure.TargetAllianceSideCommand());
         driverController.leftTrigger().onTrue(superstructure.CancelTargetingCommand());
 
-        operatorController.a().onTrue(superstructure.IntakeArmExtendTestCommand());
-        operatorController.b().onTrue(superstructure.IntakeArmRetractTestCommand());
+        //operatorController.a().onTrue(superstructure.IntakeArmExtendTestCommand());
+        //operatorController.b().onTrue(superstructure.IntakeArmRetractTestCommand());
+        operatorController.a().onTrue(superstructure.HopperFeederOpenLoopCommand());
         operatorController.x().whileTrue(superstructure.FlywheelTestCommand());
         operatorController.y().whileTrue(superstructure.FlywheelOpenLoopCommand());
         operatorController.rightBumper().onTrue(superstructure.SetTurretAngleTestCommand());

@@ -1,4 +1,4 @@
-# New Robot Pit Checklist
+# Different Robot Checklist
 
 Use this when cloning the codebase onto a second robot that has the same logic but different measured hardware constants.
 

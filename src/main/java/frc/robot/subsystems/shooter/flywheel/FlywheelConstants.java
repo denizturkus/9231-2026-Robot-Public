@@ -12,7 +12,9 @@ public final class FlywheelConstants {
     public static final double kGearboxReduction = 15.0 / 33.0;
 
     // Phoenix closed-loop gains in volts per RPM and volts per RPM/sec.
-    public static final double kP = 0.003; 
+    // Start with P-only when SysId feedforward is trustworthy, then add I only if a true bias remains.
+    public static final double kP = 0.0045;
+    public static final double kI = 0.0;
     public static final double kD = 0.0;
     public static final double kS = 0.52557;
     public static final double kV = 0.058992 / 60.0; //0.00136

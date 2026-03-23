@@ -10,9 +10,9 @@ public final class HoodConstants {
 	// Mechanism reports degrees directly through SensorToMechanismRatio.
 	public static final double kGearboxReduction = 405.0 / 28.0;
 
-	public static final double kMinAngleDeg = 0;
+	public static final double kMinAngleDeg = 8;
 	public static final double kHomeAngleDeg = kMinAngleDeg;
-	public static final double kMaxAngleDeg = 32; // tested hard limit
+	public static final double kMaxAngleDeg = 40; // tested hard limit
 
 	// Previous value for tuned-ready checks:
 	public static final double kAngleToleranceDeg = 2.0;

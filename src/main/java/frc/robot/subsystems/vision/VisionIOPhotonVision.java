@@ -57,6 +57,7 @@ public class VisionIOPhotonVision implements VisionIO {
         inputs.connected = camera.isConnected();
         Transform3d robotToCamera = robotToCameraSupplier.get();
         boolean hasTarget = inputs.hasTarget;
+        int latestTargetTagId = inputs.latestTargetTagId;
         TargetObservation latestTargetObservation = inputs.latestTargetObservation;
 
         // Read new camera observations
@@ -66,11 +67,15 @@ public class VisionIOPhotonVision implements VisionIO {
             // Update latest target observation
             if (result.hasTargets()) {
                 hasTarget = true;
+                latestTargetTagId = result.getBestTarget().fiducialId;
+                inputs.latestTargetArea = result.getBestTarget().getArea();
                 latestTargetObservation = new TargetObservation(
                         Rotation2d.fromDegrees(result.getBestTarget().getYaw()),
                         Rotation2d.fromDegrees(result.getBestTarget().getPitch()));
             } else {
                 hasTarget = false;
+                latestTargetTagId = -1;
+                inputs.latestTargetArea = 0.0;
                 latestTargetObservation = new TargetObservation(new Rotation2d(), new Rotation2d());
             }
 
@@ -131,6 +136,7 @@ public class VisionIOPhotonVision implements VisionIO {
         }
 
         inputs.hasTarget = hasTarget;
+        inputs.latestTargetTagId = hasTarget ? latestTargetTagId : -1;
         inputs.latestTargetObservation = latestTargetObservation;
 
         // Save pose observations to inputs object

@@ -9,6 +9,7 @@ import static frc.robot.subsystems.shooter.flywheel.FlywheelConstants.kD;
 import static frc.robot.subsystems.shooter.flywheel.FlywheelConstants.kFollowerMotorID;
 import static frc.robot.subsystems.shooter.flywheel.FlywheelConstants.kFollowerOpposesLeader;
 import static frc.robot.subsystems.shooter.flywheel.FlywheelConstants.kGearboxReduction;
+import static frc.robot.subsystems.shooter.flywheel.FlywheelConstants.kI;
 import static frc.robot.subsystems.shooter.flywheel.FlywheelConstants.kLeadMotorID;
 import static frc.robot.subsystems.shooter.flywheel.FlywheelConstants.kLeadMotorInverted;
 import static frc.robot.subsystems.shooter.flywheel.FlywheelConstants.kMaxAllowedRPM;
@@ -29,6 +30,7 @@ import static frc.robot.subsystems.shooter.flywheel.FlywheelConstants.kVelocityT
 
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.StatusSignal;
+import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.controls.NeutralOut;
@@ -59,9 +61,12 @@ import frc.robot.Constants;
 import frc.robot.util.PhoenixUtil;
 import java.util.List;
 import org.littletonrobotics.junction.Logger;
+import org.littletonrobotics.junction.networktables.LoggedNetworkNumber;
 
 /** Direct TalonFX flywheel subsystem for a lead/follower Kraken X60 pair. */
 public class FlywheelSubsystem extends SubsystemBase {
+    private static final String kTuningKeyPrefix = "FlywheelTuning/";
+
     private enum ControlMode {
         NEUTRAL,
         VOLTAGE,
@@ -71,6 +76,7 @@ public class FlywheelSubsystem extends SubsystemBase {
     private static final double kMinimumClosedLoopReadyRpm = 1.0;
     private static final int kVelocityFilterWindowSamples = 5;
     private static final double kReadyDebounceSeconds = 0.12;
+    private static final double kGainUpdateEpsilon = 1e-6;
 
     private final boolean hardwareEnabled;
     private final TalonFX leadMotor;
@@ -110,6 +116,24 @@ public class FlywheelSubsystem extends SubsystemBase {
                             + ")",
                     AlertType.kWarning);
     private final SysIdRoutine routine;
+    private final LoggedNetworkNumber kPTunable =
+            new LoggedNetworkNumber(kTuningKeyPrefix + "kP", kP);
+    private final LoggedNetworkNumber kITunable =
+            new LoggedNetworkNumber(kTuningKeyPrefix + "kI", kI);
+    private final LoggedNetworkNumber kDTunable =
+            new LoggedNetworkNumber(kTuningKeyPrefix + "kD", kD);
+    private final LoggedNetworkNumber kSTunable =
+            new LoggedNetworkNumber(kTuningKeyPrefix + "kS", kS);
+    private final LoggedNetworkNumber kVTunable =
+            new LoggedNetworkNumber(kTuningKeyPrefix + "kV", kV);
+    private final LoggedNetworkNumber readyToleranceTunable =
+            new LoggedNetworkNumber(
+                    kTuningKeyPrefix + "ReadyToleranceRPM",
+                    kVelocityToleranceRPM);
+    private final LoggedNetworkNumber readyHysteresisToleranceTunable =
+            new LoggedNetworkNumber(
+                    kTuningKeyPrefix + "ReadyHysteresisToleranceRPM",
+                    kVelocityHysteresisToleranceRPM);
 
     private double measuredPositionRotations = 0.0;
     private double measuredVelocityRpm = 0.0;
@@ -118,6 +142,13 @@ public class FlywheelSubsystem extends SubsystemBase {
     private double followerAppliedVolts = 0.0;
     private double leadTemperatureCelsius = 0.0;
     private double followerTemperatureCelsius = 0.0;
+    private double configuredKP = kP;
+    private double configuredKI = kI;
+    private double configuredKD = kD;
+    private double configuredKS = kS;
+    private double configuredKV = kV;
+    private double readyToleranceRpm = kVelocityToleranceRPM;
+    private double readyHysteresisToleranceRpm = kVelocityHysteresisToleranceRPM;
 
     private double requestedSetpointRPM = 0.0;
     private double clampedSetpointRPM = 0.0;
@@ -129,6 +160,7 @@ public class FlywheelSubsystem extends SubsystemBase {
     public FlywheelSubsystem() {
         setName("Flywheel");
         hardwareEnabled = Constants.currentMode == Constants.Mode.REAL;
+        refreshTuningValues();
 
         if (hardwareEnabled) {
             leadMotor =
@@ -196,10 +228,11 @@ public class FlywheelSubsystem extends SubsystemBase {
         leadConfig.CurrentLimits.StatorCurrentLimit = kMotorStatorLimitAmps;
         leadConfig.CurrentLimits.StatorCurrentLimitEnable = true;
         leadConfig.Feedback.SensorToMechanismRatio = kGearboxReduction;
-        leadConfig.Slot0.kP = kP * 60.0;
-        leadConfig.Slot0.kD = kD * 60.0;
-        leadConfig.Slot0.kS = kS;
-        leadConfig.Slot0.kV = kV * 60.0;
+        leadConfig.Slot0.kP = configuredKP * 60.0;
+        leadConfig.Slot0.kI = configuredKI * 60.0;
+        leadConfig.Slot0.kD = configuredKD * 60.0;
+        leadConfig.Slot0.kS = configuredKS;
+        leadConfig.Slot0.kV = configuredKV * 60.0;
 
         TalonFXConfiguration followerConfig = new TalonFXConfiguration();
         followerConfig.MotorOutput.NeutralMode = NeutralModeValue.Coast;
@@ -226,15 +259,16 @@ public class FlywheelSubsystem extends SubsystemBase {
         if (hardwareEnabled) {
             refreshSignals();
         }
+        updateTunableGains();
 
         filteredVelocityRpm = velocityFilter.calculate(measuredVelocityRpm);
         double filteredVelocityErrorRpm = clampedSetpointRPM - filteredVelocityRpm;
         boolean closedLoopReadyCheckEnabled =
                 controlMode == ControlMode.VELOCITY
                         && Math.abs(clampedSetpointRPM) > kMinimumClosedLoopReadyRpm;
-        boolean insideReadyBand = Math.abs(filteredVelocityErrorRpm) <= kVelocityToleranceRPM;
+        boolean insideReadyBand = Math.abs(filteredVelocityErrorRpm) <= readyToleranceRpm;
         boolean insideHysteresisBand =
-                Math.abs(filteredVelocityErrorRpm) <= kVelocityHysteresisToleranceRPM;
+                Math.abs(filteredVelocityErrorRpm) <= readyHysteresisToleranceRpm;
         nearSetpoint =
                 nearSetpointDebouncer.calculate(
                         closedLoopReadyCheckEnabled
@@ -277,6 +311,16 @@ public class FlywheelSubsystem extends SubsystemBase {
         Logger.recordOutput("Flywheel/LeadTemperatureCelsius", leadTemperatureCelsius, "celsius");
         Logger.recordOutput("Flywheel/FollowerTemperatureCelsius", followerTemperatureCelsius, "celsius");
         Logger.recordOutput("Flywheel/NearSetpoint", isNearSetpoint());
+        Logger.recordOutput("Flywheel/ConfiguredKP", configuredKP);
+        Logger.recordOutput("Flywheel/ConfiguredKI", configuredKI);
+        Logger.recordOutput("Flywheel/ConfiguredKD", configuredKD);
+        Logger.recordOutput("Flywheel/ConfiguredKS", configuredKS);
+        Logger.recordOutput("Flywheel/ConfiguredKV", configuredKV);
+        Logger.recordOutput("Flywheel/ReadyToleranceRPM", readyToleranceRpm, "revolutions_per_minute");
+        Logger.recordOutput(
+                "Flywheel/ReadyHysteresisToleranceRPM",
+                readyHysteresisToleranceRpm,
+                "revolutions_per_minute");
     }
 
     private void refreshSignals() {
@@ -311,6 +355,65 @@ public class FlywheelSubsystem extends SubsystemBase {
                 .angularVelocity(leadVelocitySignal.getValue());
     }
 
+    private void refreshTuningValues() {
+        configuredKP = kPTunable.get();
+        configuredKI = kITunable.get();
+        configuredKD = kDTunable.get();
+        configuredKS = kSTunable.get();
+        configuredKV = kVTunable.get();
+        readyToleranceRpm = Math.max(0.0, readyToleranceTunable.get());
+        readyHysteresisToleranceRpm =
+                Math.max(readyToleranceRpm, readyHysteresisToleranceTunable.get());
+    }
+
+    private void updateTunableGains() {
+        if (!Constants.kDoTuning) {
+            return;
+        }
+
+        double newKP = kPTunable.get();
+        double newKI = kITunable.get();
+        double newKD = kDTunable.get();
+        double newKS = kSTunable.get();
+        double newKV = kVTunable.get();
+        double newReadyToleranceRpm = Math.max(0.0, readyToleranceTunable.get());
+        double newReadyHysteresisToleranceRpm =
+                Math.max(newReadyToleranceRpm, readyHysteresisToleranceTunable.get());
+
+        boolean gainsChanged =
+                hasChanged(configuredKP, newKP)
+                        || hasChanged(configuredKI, newKI)
+                        || hasChanged(configuredKD, newKD)
+                        || hasChanged(configuredKS, newKS)
+                        || hasChanged(configuredKV, newKV);
+
+        configuredKP = newKP;
+        configuredKI = newKI;
+        configuredKD = newKD;
+        configuredKS = newKS;
+        configuredKV = newKV;
+        readyToleranceRpm = newReadyToleranceRpm;
+        readyHysteresisToleranceRpm = newReadyHysteresisToleranceRpm;
+
+        if (hardwareEnabled && gainsChanged) {
+            applyClosedLoopGains();
+        }
+    }
+
+    private void applyClosedLoopGains() {
+        Slot0Configs slot0 = new Slot0Configs();
+        slot0.kP = configuredKP * 60.0;
+        slot0.kI = configuredKI * 60.0;
+        slot0.kD = configuredKD * 60.0;
+        slot0.kS = configuredKS;
+        slot0.kV = configuredKV * 60.0;
+        PhoenixUtil.tryUntilOk(5, () -> leadMotor.getConfigurator().apply(slot0));
+    }
+
+    private static boolean hasChanged(double currentValue, double newValue) {
+        return Math.abs(currentValue - newValue) > kGainUpdateEpsilon;
+    }
+
     public void setVelocity(double rpm) {
         double previousClampedSetpointRPM = clampedSetpointRPM;
         ControlMode previousControlMode = controlMode;
@@ -318,7 +421,7 @@ public class FlywheelSubsystem extends SubsystemBase {
         clampedSetpointRPM = MathUtil.clamp(rpm, -kMaxAllowedRPM, kMaxAllowedRPM);
         if (previousControlMode != ControlMode.VELOCITY
                 || Math.abs(clampedSetpointRPM - previousClampedSetpointRPM)
-                        > kVelocityHysteresisToleranceRPM) {
+                        > readyHysteresisToleranceRpm) {
             nearSetpoint = false;
         }
         controlMode = ControlMode.VELOCITY;

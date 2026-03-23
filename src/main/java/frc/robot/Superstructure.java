@@ -391,8 +391,8 @@ public class Superstructure extends SubsystemBase {
         return Commands.runOnce(m_intake::stopRollers);
     }
 
-    public Command HopperOpenLoopCommand() {
-        return Commands.startEnd(m_hopper::feed, m_hopper::stop);
+    public Command HopperFeederOpenLoopCommand() {
+        return Commands.parallel(Commands.startEnd(m_feeder::feed, m_feeder::stop),Commands.startEnd(m_hopper::feed, m_hopper::stop));
     }
 
     public Command SetHoodAngleTestCommand() {

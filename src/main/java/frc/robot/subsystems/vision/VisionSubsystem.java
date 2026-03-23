@@ -63,6 +63,16 @@ public class VisionSubsystem extends SubsystemBase {
         return inputs[cameraIndex].latestTargetObservation.tx();
     }
 
+    /** Returns the fiducial ID of the latest simple target observation, or -1 if unavailable. */
+    public int getTargetTagId(int cameraIndex) {
+        return inputs[cameraIndex].latestTargetTagId;
+    }
+
+    /** Returns the target area of the latest simple target observation. */
+    public double getTargetArea(int cameraIndex) {
+        return inputs[cameraIndex].latestTargetArea;
+    }
+
     /**
      * Returns whether the requested camera currently has a valid simple target.
      *
@@ -188,6 +198,12 @@ public class VisionSubsystem extends SubsystemBase {
             Logger.recordOutput(
                     "Vision/Camera" + Integer.toString(cameraIndex) + "/HasTarget",
                     inputs[cameraIndex].hasTarget);
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/TargetTagId",
+                    inputs[cameraIndex].latestTargetTagId);
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/TargetArea",
+                    inputs[cameraIndex].latestTargetArea);
             Logger.recordOutput(
                     "Vision/Camera" + Integer.toString(cameraIndex) + "/TargetXDegrees",
                     inputs[cameraIndex].latestTargetObservation.tx().getDegrees());

@@ -25,13 +25,12 @@ public final class Constants {
 
     public static final Pose2d kStartingPose = new Pose2d(3, 2, Rotation2d.kZero);
 
-    // TODO: Measure the turret pivot pose relative to the robot origin on the new robot.
     // Keep this synchronized with ShootOnTheMoveConstants.kRobotToTurret.
   	public static Transform3d robotToTurret =
     	  new Transform3d(
-        	Inches.of(-5.25).in(Meters),
-          	Inches.of(5.25).in(Meters),
-          	Inches.of(16.945).in(Meters),
+        	-0.161,
+          	0,
+          	0.41575,
           	new Rotation3d(0.0, 0.0, Math.PI));
 
 	  public static final double loopPeriodSecs = 0.01;
@@ -46,6 +45,15 @@ public final class Constants {
 		public static final double kVelocityFilterWindowSeconds = 0.1;
 		public static final int kLookaheadIterations = 10;
 		public static final boolean kUseTurretVisionCorrection = true;
+		public static final double kTurretVisionAcquireSeconds = 0.06;
+		public static final double kTurretVisionTxFilterTimeConstantSeconds = 0.08;
+		public static final double kTurretVisionTxDeadbandDegrees = 0.35;
+		public static final double kTurretVisionBlendFactor = 0.35;
+		public static final double kTurretVisionMaxCorrectionDegrees = 8.0;
+		public static final double kTurretVisionMaxOdometryDisagreementDegrees = 20.0;
+		public static final double kTurretVisionBoundaryMarginDegrees = 12.0;
+		public static final double kTurretVisionMinTargetArea = 0.15;
+		public static final double kTurretVisionMaxAngularVelocityRadPerSec = 0.20;
 
 		// TODO: Zero this against the turret Limelight crosshair and shooter centerline.
 		public static final double kTurretVisionAimOffsetDegrees = 0.0;
@@ -54,10 +62,9 @@ public final class Constants {
 		public static final double kMinDistanceMeters = 1.34;
 		public static final double kMaxDistanceMeters = 5.60;
 
-		// TODO: Measure the turret XY offset from the robot origin.
 		// Keep this synchronized with Constants.robotToTurret.
 		public static final Translation2d kRobotToTurret =
-				new Translation2d(Inches.of(-5.25).in(Meters), Inches.of(5.25).in(Meters));
+				new Translation2d(-0.161,0);
 
 		// TODO: Rebuild this hood table from real shot testing for the new robot.
 		public static final InterpolatingDoubleTreeMap kHoodAngleDegrees =

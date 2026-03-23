@@ -23,6 +23,7 @@ import edu.wpi.first.networktables.DoubleSubscriber;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.RobotController;
 import frc.robot.util.LimelightHelpers;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -40,10 +41,15 @@ public class VisionIOLimelight implements VisionIO {
 
     private final DoubleSubscriber latencySubscriber;
     private final DoubleSubscriber tvSubscriber;
+    private final DoubleSubscriber tidSubscriber;
+    private final DoubleSubscriber taSubscriber;
     private final DoubleSubscriber txSubscriber;
     private final DoubleSubscriber tySubscriber;
     private final DoubleArraySubscriber megatag1Subscriber;
     private final DoubleArraySubscriber megatag2Subscriber;
+    private final int[] simpleTargetAllowedTagIds;
+    private final Set<Integer> simpleTargetAllowedTagIdSet = new HashSet<>();
+    private boolean simpleTargetFilterConfigured = false;
 
     /**
      * Creates a new VisionIOLimelight.
@@ -56,7 +62,7 @@ public class VisionIOLimelight implements VisionIO {
             String name,
             Supplier<Rotation2d> robotRotationSupplier,
             Supplier<Transform3d> robotToCameraSupplier) {
-        this(name, robotRotationSupplier, () -> 0.0, robotToCameraSupplier);
+        this(name, robotRotationSupplier, () -> 0.0, robotToCameraSupplier, new int[0]);
     }
 
     /**
@@ -72,15 +78,42 @@ public class VisionIOLimelight implements VisionIO {
             Supplier<Rotation2d> robotRotationSupplier,
             DoubleSupplier robotYawRateSupplierDegPerSec,
             Supplier<Transform3d> robotToCameraSupplier) {
+        this(name, robotRotationSupplier, robotYawRateSupplierDegPerSec, robotToCameraSupplier, new int[0]);
+    }
+
+    /**
+     * Creates a new VisionIOLimelight.
+     *
+     * @param name The configured name of the Limelight.
+     * @param robotRotationSupplier Supplier for the current estimated robot rotation, used for MegaTag 2.
+     * @param robotYawRateSupplierDegPerSec Supplier for the current robot yaw rate in degrees/sec.
+     * @param robotToCameraSupplier Supplier for the current camera transform relative to the robot.
+     * @param simpleTargetAllowedTagIds Allowed AprilTag IDs for simple target tracking. Empty allows all IDs.
+     */
+    public VisionIOLimelight(
+            String name,
+            Supplier<Rotation2d> robotRotationSupplier,
+            DoubleSupplier robotYawRateSupplierDegPerSec,
+            Supplier<Transform3d> robotToCameraSupplier,
+            int[] simpleTargetAllowedTagIds) {
         this.name = Objects.requireNonNull(name, "name");
         this.robotRotationSupplier = Objects.requireNonNull(robotRotationSupplier, "robotRotationSupplier");
         this.robotYawRateSupplierDegPerSec =
                 Objects.requireNonNull(robotYawRateSupplierDegPerSec, "robotYawRateSupplierDegPerSec");
         this.robotToCameraSupplier = Objects.requireNonNull(robotToCameraSupplier, "robotToCameraSupplier");
+        this.simpleTargetAllowedTagIds =
+                Arrays.copyOf(
+                        Objects.requireNonNull(simpleTargetAllowedTagIds, "simpleTargetAllowedTagIds"),
+                        simpleTargetAllowedTagIds.length);
+        for (int tagId : this.simpleTargetAllowedTagIds) {
+            simpleTargetAllowedTagIdSet.add(tagId);
+        }
 
         var table = NetworkTableInstance.getDefault().getTable(name);
         latencySubscriber = table.getDoubleTopic("tl").subscribe(0.0);
         tvSubscriber = table.getDoubleTopic("tv").subscribe(0.0);
+        tidSubscriber = table.getDoubleTopic("tid").subscribe(-1.0);
+        taSubscriber = table.getDoubleTopic("ta").subscribe(0.0);
         txSubscriber = table.getDoubleTopic("tx").subscribe(0.0);
         tySubscriber = table.getDoubleTopic("ty").subscribe(0.0);
         megatag1Subscriber = table.getDoubleArrayTopic("botpose_wpiblue").subscribe(new double[] {});
@@ -89,13 +122,31 @@ public class VisionIOLimelight implements VisionIO {
 
     @Override
     public void updateInputs(VisionIOInputs inputs) {
+        boolean wasConnected = inputs.connected;
+
         // Update connection status based on whether an update has been seen in the last 250ms
         inputs.connected = ((RobotController.getFPGATime() - latencySubscriber.getLastChange()) / 1000) < 250;
 
+        if (inputs.connected && (!wasConnected || !simpleTargetFilterConfigured)) {
+            configureSimpleTargetFilter();
+        } else if (!inputs.connected) {
+            simpleTargetFilterConfigured = false;
+        }
+
         // Update target observation
-        inputs.hasTarget = tvSubscriber.get() > 0.5;
-        inputs.latestTargetObservation = new TargetObservation(
-                Rotation2d.fromDegrees(txSubscriber.get()), Rotation2d.fromDegrees(tySubscriber.get()));
+        boolean hasRawTarget = tvSubscriber.get() > 0.5;
+        int latestTargetTagId = hasRawTarget ? (int) Math.round(tidSubscriber.get()) : -1;
+        boolean targetAllowed = hasRawTarget && isSimpleTargetAllowed(latestTargetTagId);
+
+        inputs.hasTarget = targetAllowed;
+        inputs.latestTargetTagId = targetAllowed ? latestTargetTagId : -1;
+        inputs.latestTargetArea = targetAllowed ? taSubscriber.get() : 0.0;
+        inputs.latestTargetObservation =
+                targetAllowed
+                        ? new TargetObservation(
+                                Rotation2d.fromDegrees(txSubscriber.get()),
+                                Rotation2d.fromDegrees(tySubscriber.get()))
+                        : new TargetObservation(new Rotation2d(), new Rotation2d());
 
         // Publish robot orientation and live camera pose for MegaTag 2 / moving cameras.
         Transform3d robotToCamera = robotToCameraSupplier.get();
@@ -149,6 +200,17 @@ public class VisionIOLimelight implements VisionIO {
         for (int id : tagIds) {
             inputs.tagIds[i++] = id;
         }
+    }
+
+    private void configureSimpleTargetFilter() {
+        if (simpleTargetAllowedTagIds.length > 0) {
+            LimelightHelpers.SetFiducialIDFiltersOverride(name, simpleTargetAllowedTagIds);
+        }
+        simpleTargetFilterConfigured = true;
+    }
+
+    private boolean isSimpleTargetAllowed(int tagId) {
+        return simpleTargetAllowedTagIdSet.isEmpty() || simpleTargetAllowedTagIdSet.contains(tagId);
     }
 
     /** Parses the 3D pose from a Limelight botpose array. */
