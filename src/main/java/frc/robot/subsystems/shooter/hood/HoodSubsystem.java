@@ -138,7 +138,7 @@ public class HoodSubsystem extends SubsystemBase {
 	private void configureMotor() {
 		TalonFXConfiguration config = new TalonFXConfiguration();
 
-		config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+		config.MotorOutput.NeutralMode = NeutralModeValue.Brake;	
 		config.MotorOutput.Inverted =
 				kMotorInverted
 						? InvertedValue.Clockwise_Positive

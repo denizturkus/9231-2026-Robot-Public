@@ -204,7 +204,7 @@ public class Superstructure extends SubsystemBase {
                     Commands.runOnce(() -> m_IntakeState = IntakeState.STOWING))
                 .andThen(
                     Commands.runOnce(m_hopper::stop).andThen(Commands.runOnce(() -> m_isHopperRunning = false))
-                            .onlyIf(() -> m_isHopperRunning && m_ShooterState == ShooterState.IDLE))
+                            .onlyIf(() -> m_isHopperRunning == true && m_ShooterState != ShooterState.SHOOTING && m_ShooterState != ShooterState.READY))
                 .andThen(Commands.waitUntil(m_intake::isArmNearSetpoint))
                 .andThen(Commands.runOnce(() -> m_IntakeState = IntakeState.STOWED))
                 .onlyIf(() -> m_IntakeState == IntakeState.INTAKING);
@@ -393,6 +393,31 @@ public class Superstructure extends SubsystemBase {
 
     public Command HopperFeederOpenLoopCommand() {
         return Commands.parallel(Commands.startEnd(m_feeder::feed, m_feeder::stop),Commands.startEnd(m_hopper::feed, m_hopper::stop));
+    }
+
+    public Command HoodManual8DegsCommand() {
+        return Commands.runOnce(() -> m_hood.setHoodAngle(8));
+    }
+    public Command HoodManual12DegsCommand() {
+        return Commands.runOnce(() -> m_hood.setHoodAngle(12));
+    }
+    public Command HoodManual16DegsCommand() {
+        return Commands.runOnce(() -> m_hood.setHoodAngle(16));
+    }
+    public Command HoodManual20DegsCommand() {
+        return Commands.runOnce(() -> m_hood.setHoodAngle(20));
+    }
+    public Command HoodManual24DegsCommand() {
+        return Commands.runOnce(() -> m_hood.setHoodAngle(24));
+    }
+    public Command HoodManual28DegsCommand() {
+        return Commands.runOnce(() -> m_hood.setHoodAngle(28));
+    }
+    public Command HoodManual32DegsCommand() {
+        return Commands.runOnce(() -> m_hood.setHoodAngle(32));
+    }
+    public Command HoodManual36DegsCommand() {
+        return Commands.runOnce(() -> m_hood.setHoodAngle(36));
     }
 
     public Command SetHoodAngleTestCommand() {

@@ -6,18 +6,16 @@ import edu.wpi.first.math.system.plant.DCMotor; //TODO Change Intake Constants
  * The constants required for the intake subsystem.
  */
 public class IntakeConstants {
-	// TODO: Verify intake roller/arm CAN IDs and CAN bus assignments.
 	// Motor IDs
 	public static final int kRollerMotorID = 9;
 	public static final String kRollerMotorCANBus = ""; // Main RIO bus
 	public static final int kArmMotorID = 10;
 	public static final String kArmMotorCANBus = "";
 
-	// TODO: Verify intake roller voltages and retune arm gains on the new robot.
 	// Control parameters
 	public static final boolean kIsFOC = true;
 	// Voltage when intaking, ~2000-2500 RPM for the Kraken X60.
-	public static final double kIntakeRollerVoltage = 4.5;
+	public static final double kIntakeRollerVoltage = 8;
 	public static final double kOuttakeRollerVoltage = -3.5;
 	// Arm PID/feedforward
 	// Units: Volts, Degrees
@@ -27,25 +25,20 @@ public class IntakeConstants {
 	public static final double kP = 0.18, kD = 0, kG = 1.0;
 	public static final double kSSim = 1.2;
 	public static final double kPSim = 0.18, kDSim = 0, kGSim = 1.0;
-	// TODO: Retune Motion Magic velocity and acceleration for the intake arm.
 	public static final double kMotionMagicMaxVelocityDegPerSec = 360;
 	public static final double kMotionMagicAccelerationDegPerSecSq = 1080;
-	// TODO: Re-measure intake calibration, open, closed, min, and max arm angles.
 	// The angle at which the encoders are zeroed, the angle at the start of the match
-	public static final double kArmCalibrationAngleDeg = 90;
-	public static final double kArmClosedAngle = 90, kArmOpenedAngle = 0;
-	public static final double kArmMinAngle = 0, kArmMaxAngle = 90;
+	public static final double kArmCalibrationAngleDeg = 145;
+	public static final double kArmClosedAngle = 145, kArmOpenedAngle = 0;
+	public static final double kArmMinAngle = 0, kArmMaxAngle = 145;
 
-	// TODO: Revisit temperature limits if the cooling setup differs.
 	public static final double kArmMaxTemperature = 80;
 	public static final double kRollerMaxTemperature = 80;
 
-	// TODO: Verify roller and arm reductions on the new robot.
 	// Gearbox reduction
 	public static final double kRollerGearboxReduction = 1; // A 1:1 ratio (I/O)
-	public static final double kArmGearboxReduction = 5; // A 5:1 ratio (I/O)
+	public static final double kArmGearboxReduction = 60 * 15 / 17; // A 5:1 ratio (I/O)
 
-	// TODO: Revisit current limits if the electrical package differs.
 	// Current limits for the motor
 	public static final double kRollerMotorSupplyLimitAmps = 20.0;
 	public static final double kRollerMotorStatorLimitAmps = 50.0;
@@ -53,7 +46,6 @@ public class IntakeConstants {
 	public static final double kArmMotorSupplyLimitAmps = 30.0;
 	public static final double kArmMotorStatorLimitAmps = 60.0;
 
-	// TODO: Verify roller and arm motor directions on the new robot.
 	// Inversions
 	public static final boolean kRollerMotorInverted = false;
 	public static final boolean kArmMotorInverted = false;

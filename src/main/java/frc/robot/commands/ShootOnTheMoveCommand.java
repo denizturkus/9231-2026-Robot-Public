@@ -24,6 +24,7 @@ import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
 
 public class ShootOnTheMoveCommand extends Command {
+  private static final double TURRET_ANGLE_LIMIT_EPSILON_DEG = 1e-9;
   private static final int VELOCITY_FILTER_SAMPLES =
       Math.max(
           1,
@@ -66,11 +67,14 @@ public class ShootOnTheMoveCommand extends Command {
       boolean turretVisionRawAvailable,
       boolean turretVisionActive,
       int turretVisionTagId,
+      double turretAngleDeg,
       Rotation2d turretAngle,
+      double odometryTurretAngleDeg,
       Rotation2d odometryTurretAngle,
       Rotation2d leadCompensation,
       Rotation2d turretVisionTx,
       double turretVisionFilteredTxDeg,
+      double turretVisionLineOfSightAngleDeg,
       Rotation2d turretVisionLineOfSightAngle,
       double turretVisionAppliedCorrectionDeg,
       boolean turretVisionCorrectionRejected,
@@ -187,7 +191,7 @@ public class ShootOnTheMoveCommand extends Command {
 
     latestSolution = calculateShotSolution(target);
 
-    turret.setTurretAngle(latestSolution.turretAngle().getDegrees());
+    turret.setTurretAngle(latestSolution.turretAngleDeg());
     hood.setHoodAngle(latestSolution.hoodAngleDeg());
     shotSolutionConsumer.accept(latestSolution);
     if (flywheel != null) {
@@ -212,9 +216,9 @@ public class ShootOnTheMoveCommand extends Command {
         "ShootOnTheMove/TurretVisionTargetArea", vision != null && turretVisionCameraIndex >= 0
             ? vision.getTargetArea(turretVisionCameraIndex)
             : 0.0);
-    Logger.recordOutput("ShootOnTheMove/TurretAngleDeg", latestSolution.turretAngle().getDegrees());
+    Logger.recordOutput("ShootOnTheMove/TurretAngleDeg", latestSolution.turretAngleDeg());
     Logger.recordOutput(
-        "ShootOnTheMove/OdometryTurretAngleDeg", latestSolution.odometryTurretAngle().getDegrees());
+        "ShootOnTheMove/OdometryTurretAngleDeg", latestSolution.odometryTurretAngleDeg());
     Logger.recordOutput(
         "ShootOnTheMove/TurretLeadCompensationDeg",
         latestSolution.leadCompensation().getDegrees());
@@ -224,7 +228,7 @@ public class ShootOnTheMoveCommand extends Command {
         "ShootOnTheMove/TurretVisionFilteredTxDeg", latestSolution.turretVisionFilteredTxDeg());
     Logger.recordOutput(
         "ShootOnTheMove/TurretVisionLineOfSightAngleDeg",
-        latestSolution.turretVisionLineOfSightAngle().getDegrees());
+        latestSolution.turretVisionLineOfSightAngleDeg());
     Logger.recordOutput(
         "ShootOnTheMove/TurretVisionAppliedCorrectionDeg",
         latestSolution.turretVisionAppliedCorrectionDeg());
@@ -280,12 +284,21 @@ public class ShootOnTheMoveCommand extends Command {
       lookaheadDistance = lookaheadTurretPosition.getDistance(target);
     }
 
-    Rotation2d odometryTurretAngle =
+    double currentTurretAngleDeg = turret.getAngle();
+    Rotation2d odometryLookaheadTurretAngle =
         target.minus(lookaheadTurretPosition).getAngle().minus(estimatedPose.getRotation());
+    double odometryLookaheadTurretAngleDeg =
+        resolveTurretAngleToLimits(
+            odometryLookaheadTurretAngle.getDegrees(), currentTurretAngleDeg);
     Rotation2d odometryLineOfSightTurretAngle =
         target.minus(turretPosition).getAngle().minus(estimatedPose.getRotation());
-    Rotation2d leadCompensation = odometryTurretAngle.minus(odometryLineOfSightTurretAngle);
-    Rotation2d turretAngle = odometryTurretAngle;
+    double odometryLineOfSightTurretAngleDeg =
+        resolveTurretAngleToLimits(
+            odometryLineOfSightTurretAngle.getDegrees(), currentTurretAngleDeg);
+    Rotation2d leadCompensation =
+        odometryLookaheadTurretAngle.minus(odometryLineOfSightTurretAngle);
+    Rotation2d turretAngle = odometryLookaheadTurretAngle;
+    double turretAngleDeg = odometryLookaheadTurretAngleDeg;
     boolean turretVisionRawAvailable = shouldUseTurretVision();
     if (turretVisionRawAvailable) {
       double rawTurretVisionTxDeg = vision.getTargetX(turretVisionCameraIndex).getDegrees();
@@ -301,23 +314,27 @@ public class ShootOnTheMoveCommand extends Command {
     int turretVisionTagId = turretVisionActive ? lastTurretVisionTagId : -1;
     Rotation2d turretVisionTx = Rotation2d.kZero;
     Rotation2d turretVisionLineOfSightAngle = Rotation2d.kZero;
+    double turretVisionLineOfSightAngleDeg = 0.0;
     double turretVisionAppliedCorrectionDeg = 0.0;
     boolean turretVisionCorrectionRejected = false;
 
     if (turretVisionActive) {
       turretVisionTx = Rotation2d.fromDegrees(applyTurretVisionTxDeadband(filteredTurretVisionTxDeg));
       turretVisionLineOfSightAngle =
-          Rotation2d.fromDegrees(turret.getAngle())
+          Rotation2d.fromDegrees(currentTurretAngleDeg)
               .minus(turretVisionTx)
               .plus(
                   Rotation2d.fromDegrees(
                       Constants.ShootOnTheMoveConstants.kTurretVisionAimOffsetDegrees));
+      turretVisionLineOfSightAngleDeg =
+          resolveTurretAngleToLimits(
+              turretVisionLineOfSightAngle.getDegrees(), currentTurretAngleDeg);
       double turretVisionCorrectionDeg =
           shortestAngleDeltaDegrees(
-              turretVisionLineOfSightAngle.getDegrees(),
-              odometryLineOfSightTurretAngle.getDegrees());
+              turretVisionLineOfSightAngleDeg, odometryLineOfSightTurretAngleDeg);
 
-      if (shouldRejectVisionCorrection(odometryTurretAngle.getDegrees(), turretVisionCorrectionDeg)) {
+      if (shouldRejectVisionCorrection(
+          odometryLookaheadTurretAngleDeg, turretVisionCorrectionDeg)) {
         turretVisionCorrectionRejected = true;
       } else {
         turretVisionAppliedCorrectionDeg =
@@ -330,6 +347,9 @@ public class ShootOnTheMoveCommand extends Command {
             odometryLineOfSightTurretAngle
                 .plus(Rotation2d.fromDegrees(turretVisionAppliedCorrectionDeg))
                 .plus(leadCompensation);
+        turretAngleDeg =
+            resolveTurretAngleToLimits(
+                turretAngle.getDegrees(), odometryLookaheadTurretAngleDeg);
       }
     }
 
@@ -337,7 +357,6 @@ public class ShootOnTheMoveCommand extends Command {
         Constants.ShootOnTheMoveConstants.kHoodAngleDegrees.get(clampDistance(lookaheadDistance));
     double flywheelRpm =
         Constants.ShootOnTheMoveConstants.kFlywheelSpeedRpm.get(clampDistance(lookaheadDistance));
-    double turretAngleDeg = turretAngle.getDegrees();
     double turretVelocityDegPerSecond =
         turretVelocityFilter.calculate(
             shortestAngleDeltaDegrees(turretAngleDeg, lastTurretAngleDeg)
@@ -359,11 +378,14 @@ public class ShootOnTheMoveCommand extends Command {
         turretVisionRawAvailable,
         turretVisionActive,
         turretVisionTagId,
+        turretAngleDeg,
         turretAngle,
+        odometryLineOfSightTurretAngleDeg,
         odometryLineOfSightTurretAngle,
         leadCompensation,
         turretVisionTx,
         filteredTurretVisionTxDeg,
+        turretVisionLineOfSightAngleDeg,
         turretVisionLineOfSightAngle,
         turretVisionAppliedCorrectionDeg,
         turretVisionCorrectionRejected,
@@ -420,7 +442,31 @@ public class ShootOnTheMoveCommand extends Command {
   }
 
   private static double shortestAngleDeltaDegrees(double currentAngleDeg, double previousAngleDeg) {
-    return MathUtil.inputModulus(currentAngleDeg - previousAngleDeg, -180.0, 180.0);
+    return MathUtil.inputModulus(currentAngleDeg - previousAngleDeg, -180, 180.0);
+  }
+
+  private static double resolveTurretAngleToLimits(double desiredAngleDeg, double referenceAngleDeg) {
+    // The turret can travel exactly one turn, so the same pointing direction may have two legal
+    // representations at the cable-wrap seam. Pick the legal equivalent closest to the current
+    // branch so we preserve the old circular aiming behavior without commanding an unnecessary
+    // full-turn unwind.
+    double wrappedAngleDeg = MathUtil.inputModulus(desiredAngleDeg, kMinAngleDeg, kMaxAngleDeg);
+    double resolvedAngleDeg = MathUtil.clamp(wrappedAngleDeg, kMinAngleDeg, kMaxAngleDeg);
+    double alternateAngleDeg =
+        wrappedAngleDeg + (wrappedAngleDeg <= referenceAngleDeg ? 360.0 : -360.0);
+
+    if (isTurretAngleWithinLimits(alternateAngleDeg)
+        && Math.abs(alternateAngleDeg - referenceAngleDeg)
+            < Math.abs(resolvedAngleDeg - referenceAngleDeg)) {
+      resolvedAngleDeg = alternateAngleDeg;
+    }
+
+    return MathUtil.clamp(resolvedAngleDeg, kMinAngleDeg, kMaxAngleDeg);
+  }
+
+  private static boolean isTurretAngleWithinLimits(double angleDeg) {
+    return angleDeg >= kMinAngleDeg - TURRET_ANGLE_LIMIT_EPSILON_DEG
+        && angleDeg <= kMaxAngleDeg + TURRET_ANGLE_LIMIT_EPSILON_DEG;
   }
 
   private static double applyTurretVisionTxDeadband(double txDeg) {

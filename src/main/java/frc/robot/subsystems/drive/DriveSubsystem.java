@@ -80,7 +80,6 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
                     Math.hypot(TunerConstants.BackRight.LocationX, TunerConstants.BackRight.LocationY)));
 
     // PathPlanner config constants
-    // TODO: Re-measure these for the new robot because they affect PathPlanner behavior.
     private static final double ROBOT_MASS_KG = 50;
     private static final double ROBOT_MOI = 6.883;
     private static final double WHEEL_COF = 1.2;

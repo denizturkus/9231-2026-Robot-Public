@@ -80,7 +80,7 @@ public class IntakeIOTalonFX implements IntakeIO {
 		armMotorConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
 		armMotorConfig.CurrentLimits.SupplyCurrentLimit = kArmMotorSupplyLimitAmps;
 		armMotorConfig.MotorOutput.DutyCycleNeutralDeadband = 0.03;
-		armMotorConfig.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+		armMotorConfig.MotorOutput.NeutralMode = NeutralModeValue.Coast; //TODO: Change intake arm motor to brake
 		armMotorConfig.MotorOutput.Inverted = kArmMotorInverted ? InvertedValue.Clockwise_Positive
 				: InvertedValue.CounterClockwise_Positive;
 		armMotorConfig.Feedback.SensorToMechanismRatio = kArmGearboxReduction;

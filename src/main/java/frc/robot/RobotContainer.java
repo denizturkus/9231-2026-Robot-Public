@@ -267,6 +267,9 @@ public class RobotContainer {
      * and then passing it to a {@link edu.wpi.first.wpilibj2.command.button.JoystickButton}.
      */
     private void configureButtonBindings() {
+
+        // DRIVE-RELATED CONTROLS ---------------------------------
+
         // Default command, normal field-relative drive
         drive.setDefaultCommand(DriveCommands.joystickDrive(
                 drive, () -> -driverController.getLeftY(), () -> -driverController.getLeftX(), () -> -driverController.getRightX()));
@@ -288,24 +291,48 @@ public class RobotContainer {
                 : () -> drive.setPose(new Pose2d(drive.getPose().getTranslation(), new Rotation2d())); // zero gyro
         driverController.start().onTrue(Commands.runOnce(resetGyro, drive).ignoringDisable(true));
 
-        //change these to operator controller 
-        //operatorController.a().onTrue(superstructure.StartIntakingCommand());
-        //operatorController.b().onTrue(superstructure.StopIntakingCommand());
-        driverController.x().whileTrue(superstructure.ShootFuelCommand());
-        driverController.rightTrigger().whileTrue(superstructure.FlywheelTestCommand());
-        driverController.rightBumper().onTrue(superstructure.TargetHubCommand());
-        driverController.leftBumper().onTrue(superstructure.TargetAllianceSideCommand());
-        driverController.leftTrigger().onTrue(superstructure.CancelTargetingCommand());
+        // OPERATIVE CONTROLS ------------------------------------
 
-        //operatorController.a().onTrue(superstructure.IntakeArmExtendTestCommand());
-        //operatorController.b().onTrue(superstructure.IntakeArmRetractTestCommand());
-        operatorController.a().onTrue(superstructure.HopperFeederOpenLoopCommand());
+        // intake 
+        operatorController.a().onTrue(superstructure.StartIntakingCommand());
+        operatorController.b().onTrue(superstructure.StopIntakingCommand());
+
+        // feed balls into the shooter
+        operatorController.x().whileTrue(superstructure.ShootFuelCommand());
+
+        
+        operatorController.y().whileTrue(superstructure.HopperFeederOpenLoopCommand());
+        operatorController.rightTrigger().whileTrue(superstructure.FlywheelTestCommand());
+
+        
+        operatorController.rightBumper().onTrue(superstructure.SetTurretAngleTestCommand());
+
+        // automated targeting
+        //operatorController.rightBumper().onTrue(superstructure.TargetHubCommand()); TODO: uncomment target hub
+        operatorController.leftBumper().onTrue(superstructure.TargetAllianceSideCommand());
+        operatorController.leftTrigger().onTrue(superstructure.CancelTargetingCommand());
+
+        // sets hood angles manually (degrees)
+        operatorController.povDown().onTrue(superstructure.HoodManual8DegsCommand());
+        operatorController.povDownRight().onTrue(superstructure.HoodManual12DegsCommand());
+        operatorController.povRight().onTrue(superstructure.HoodManual16DegsCommand());
+        operatorController.povUpRight().onTrue(superstructure.HoodManual20DegsCommand());
+        operatorController.povUp().onTrue(superstructure.HoodManual24DegsCommand());
+        operatorController.povUpLeft().onTrue(superstructure.HoodManual28DegsCommand());
+        operatorController.povLeft().onTrue(superstructure.HoodManual32DegsCommand());
+        operatorController.povDownLeft().onTrue(superstructure.HoodManual36DegsCommand());
+
+        // zeroes hood and turret encoders and gets current positions as their zeroes
+        operatorController.back().onTrue(Commands.parallel(Commands.runOnce(turret::zeroEncoders), Commands.runOnce(hood::zeroEncoders)));
+
+                /* 
+        operatorController.a().whileTrue(superstructure.HopperFeederOpenLoopCommand());
         operatorController.x().whileTrue(superstructure.FlywheelTestCommand());
         operatorController.y().whileTrue(superstructure.FlywheelOpenLoopCommand());
         operatorController.rightBumper().onTrue(superstructure.SetTurretAngleTestCommand());
-        operatorController.leftBumper().onTrue(superstructure.SetHoodAngleTestCommand());
-        operatorController.start().onTrue(Commands.parallel(Commands.runOnce(turret::zeroEncoders), Commands.runOnce(hood::zeroEncoders)));
+        operatorController.leftBumper().onTrue(superstructure.SetHoodAngleTestCommand()); */
 
+        // some music in case robot fails to motivate people
         musicController.leftStick().onTrue(Commands.runOnce(this::configureOrchestra).ignoringDisable(true));
         musicController.start().onTrue(Commands.runOnce(this::startMusic).ignoringDisable(true));
         musicController.a().onTrue(Commands.runOnce(() -> loadMusic("IAMMUSIC/rickroll.chrp")).ignoringDisable(true));

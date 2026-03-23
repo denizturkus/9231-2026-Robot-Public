@@ -19,14 +19,13 @@ import edu.wpi.first.units.measure.*;
 public class TunerConstants {
     // Both sets of gains need to be tuned to your individual robot.
 
-    // TODO: Retune steer closed-loop gains for the new robot's steering friction and inertia.
+    // TODO: Advantagekit ff routine 
     // The steer motor uses any SwerveModule.SteerRequestType control request with the
     // output type specified by SwerveModuleConstants.SteerMotorClosedLoopOutput
     private static final Slot0Configs steerGains = new Slot0Configs()
         .withKP(100).withKI(0).withKD(0.5)
         .withKS(0.1).withKV(2.66).withKA(0)
         .withStaticFeedforwardSign(StaticFeedforwardSignValue.UseClosedLoopSign);
-    // TODO: Retune drive closed-loop gains after wheel radius and free-speed characterization.
     // When using closed-loop control, the drive motor uses the control
     // output type specified by SwerveModuleConstants.DriveMotorClosedLoopOutput
     private static final Slot0Configs driveGains = new Slot0Configs()
@@ -49,7 +48,7 @@ public class TunerConstants {
     // When not Pro-licensed, Fused*/Sync* automatically fall back to Remote*
     private static final SteerFeedbackType kSteerFeedbackType = SteerFeedbackType.FusedCANcoder;
 
-    // TODO: Characterize real slip current on carpet for the new robot.
+    // TODO: Characterize real slip current on carpet
     // The stator current at which the wheels start to slip;
     // This needs to be tuned to your individual robot
     private static final Current kSlipCurrent = Amps.of(120);
@@ -69,15 +68,14 @@ public class TunerConstants {
     // Configs for the Pigeon 2; leave this null to skip applying Pigeon 2 configs
     private static final Pigeon2Configuration pigeonConfigs = null;
 
-    // TODO: Verify the drivetrain CAN bus name on the new robot.
     // CAN bus that the devices are located on;
     // All swerve devices must share the same CAN bus
     public static final CANBus kCANBus = new CANBus("Drivetrain", "./logs/example.hoot");
 
-    // TODO: Re-characterize max drive speed at 12V on the new robot.
+    // TODO: Re-characterize max drive speed at 12V
     // Theoretical free speed (m/s) at 12 V applied output;
     // This needs to be tuned to your individual robot
-    public static final LinearVelocity kSpeedAt12Volts = MetersPerSecond.of(2.04);
+    public static final LinearVelocity kSpeedAt12Volts = MetersPerSecond.of(2.04); // 5.04 (theoretical)
 
     // Every 1 rotation of the azimuth results in kCoupleRatio drive motor turns;
     // This may need to be tuned to your individual robot
@@ -87,7 +85,6 @@ public class TunerConstants {
     private static final double kSteerGearRatio = 21.428571428571427;
     private static final Distance kWheelRadius = Inches.of(2.01);
 
-    // TODO: Verify drive side inversions on the new robot.
     private static final boolean kInvertLeftSide = false;
     private static final boolean kInvertRightSide = true;
 
@@ -142,7 +139,6 @@ public class TunerConstants {
     private static final Distance kFrontLeftYPos = Inches.of(10.625);
 
     // Front Right
-    // TODO: Verify front-right CAN IDs, encoder offset, inversions, and module location.
     private static final int kFrontRightDriveMotorId = 7;
     private static final int kFrontRightSteerMotorId = 8;
     private static final int kFrontRightEncoderId = 15;
@@ -154,7 +150,6 @@ public class TunerConstants {
     private static final Distance kFrontRightYPos = Inches.of(-10.625);
 
     // Back Left
-    // TODO: Verify back-left CAN IDs, encoder offset, inversions, and module location.
     private static final int kBackLeftDriveMotorId = 4;
     private static final int kBackLeftSteerMotorId = 3;
     private static final int kBackLeftEncoderId = 16;
@@ -166,7 +161,6 @@ public class TunerConstants {
     private static final Distance kBackLeftYPos = Inches.of(10.625);
 
     // Back Right
-    // TODO: Verify back-right CAN IDs, encoder offset, inversions, and module location.
     private static final int kBackRightDriveMotorId = 1;
     private static final int kBackRightSteerMotorId = 2;
     private static final int kBackRightEncoderId = 18;

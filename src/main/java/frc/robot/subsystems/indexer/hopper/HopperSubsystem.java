@@ -76,11 +76,6 @@ public class HopperSubsystem extends SubsystemBase {
         runVoltage(kFeedVoltage);
     }
 
-    /** Runs the hopper at a higher speed. */
-    public void fastFeed() {
-        runVoltage(kFastFeedVoltage);
-    }
-
     /** Runs the hopper in reverse to clear jams. */
     public void reverse() {
         runVoltage(kReverseVoltage);

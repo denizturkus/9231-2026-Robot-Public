@@ -12,12 +12,10 @@ public final class TurretConstants {
 
     // The turret reports 0 deg at its startup home position after zeroEncoders() is called.
     public static final double kHomeAngleDeg = 0.0;
-    public static final double kMinAngleDeg = -180.0;
-    public static final double kMaxAngleDeg = 180.0;
-    // TODO: Tighten this back down after turret tuning is finished.
-    // Previous value for tuned-ready checks:
-    // public static final double kAngleToleranceDeg = 5.0;
-    public static final double kAngleToleranceDeg = 8.0;
+    public static final double kMinAngleDeg = -225.0;
+    public static final double kMaxAngleDeg = 135.0;
+
+    public static final double kAngleToleranceDeg = 3;
 
     // Phoenix closed-loop gains. These are still tuning values, but Motion Magic handles the
     // profile generation and onboard PID.

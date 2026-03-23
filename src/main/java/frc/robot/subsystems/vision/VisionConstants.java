@@ -25,11 +25,11 @@ public class VisionConstants {
     public static String camera0Name = "limelight-chassis";
     public static String camera1Name = "limelight-turret";
 
-    //TODO: re-measure turretToCamera0 from CAD
+    //TODO: re-measure turretToCamera1 from CAD
     // Robot to camera transforms
     // `turrettToCamera1` is the turret camera transform when the turret is at its zero angle.
-    public static Transform3d robotToCamera0 = new Transform3d(0.0, 0.0, 0.0, new Rotation3d(0.0, Math.PI / 6.0, Math.PI));
-    public static Transform3d turretToCamera1 = new Transform3d(-0.155, 0.0, 0, new Rotation3d(0.0, 0.0, Math.PI));
+    public static Transform3d robotToCamera0 = new Transform3d(-0.27248, 0.2176, 0.14083, new Rotation3d(0.0, (Math.PI / 6.0) , (7 * Math.PI) / 4.0));
+    public static Transform3d turretToCamera1 = new Transform3d(-0.151, 0.0, 0, new Rotation3d(0.0, 0.0, Math.PI));
 
     // TODO: Retune global vision rejection thresholds after pose validation
     // Basic filtering thresholds
@@ -66,7 +66,7 @@ public class VisionConstants {
     // (Adjust to trust some cameras more than others)
     public static double[] cameraLinearStdDevFactors = new double[] {
         1.0, // Chassis camera
-        1.35 // Turret camera
+        1.0 // Turret camera
     };
     public static double[] cameraAngularStdDevFactors = new double[] {
         1.0, // Chassis camera

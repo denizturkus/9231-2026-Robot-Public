@@ -13,7 +13,7 @@ public final class FlywheelConstants {
 
     // Phoenix closed-loop gains in volts per RPM and volts per RPM/sec.
     // Start with P-only when SysId feedforward is trustworthy, then add I only if a true bias remains.
-    public static final double kP = 0.0045;
+    public static final double kP = 0.0015;
     public static final double kI = 0.0;
     public static final double kD = 0.0;
     public static final double kS = 0.52557;
@@ -32,7 +32,7 @@ public final class FlywheelConstants {
     public static final double kMaxAllowedRPM = 6000.0;
     // Require a tighter band to start feeding, then allow a wider hold band so
     // shot-to-shot RPM dips do not chatter the feeder/hopper.
-    public static final double kVelocityToleranceRPM = 50.0;
+    public static final double kVelocityToleranceRPM = 100.0;
     public static final double kVelocityHysteresisToleranceRPM = 150.0;
 
     public static final double kSysIdVoltageRampRate = 0.6;

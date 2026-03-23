@@ -40,7 +40,7 @@ public final class Constants {
 	public static final double kLoopPeriodSeconds = 1.0 / 50.0;
 
 	public static final class ShootOnTheMoveConstants {
-		// TODO: Retune moving-shot latency compensation and filtering on the real robot.
+		// TODO: Retune moving-shot latency compensation and filtering
 		public static final double kPhaseDelaySeconds = 0.03;
 		public static final double kVelocityFilterWindowSeconds = 0.1;
 		public static final int kLookaheadIterations = 10;
@@ -58,7 +58,7 @@ public final class Constants {
 		// TODO: Zero this against the turret Limelight crosshair and shooter centerline.
 		public static final double kTurretVisionAimOffsetDegrees = 0.0;
 
-		// TODO: Revalidate the supported moving-shot distance window for the new robot.
+		// TODO: Revalidate the supported moving-shot distance window.
 		public static final double kMinDistanceMeters = 1.34;
 		public static final double kMaxDistanceMeters = 5.60;
 
@@ -66,7 +66,7 @@ public final class Constants {
 		public static final Translation2d kRobotToTurret =
 				new Translation2d(-0.161,0);
 
-		// TODO: Rebuild this hood table from real shot testing for the new robot.
+		// TODO: INTERPOLASYON TABLOSUU
 		public static final InterpolatingDoubleTreeMap kHoodAngleDegrees =
 				createInterpolatingMap(
 						new double[][] {
@@ -82,7 +82,6 @@ public final class Constants {
 							{5.60, 35.0}
 						});
 
-		// TODO: Rebuild this flywheel table from real shot testing for the new robot.
 		public static final InterpolatingDoubleTreeMap kFlywheelSpeedRpm =
 				createInterpolatingMap(
 						new double[][] {
@@ -97,7 +96,6 @@ public final class Constants {
 							{5.410986, 4000.0}
 						});
 
-		// TODO: Rebuild this time-of-flight table from logged real-shot data for the new robot.
 		public static final InterpolatingDoubleTreeMap kTimeOfFlightSeconds =
 				createInterpolatingMap(
 						new double[][] {
@@ -124,13 +122,13 @@ public final class Constants {
 
 	/** Class holding the physical parameters of the robot. */
 	public static final class PhysicalParameters {
-		// TODO: Re-measure robot footprint, mass, and wheel/floor coefficient for the new robot.
+		// TODO: Re-measure robot footprint, mass, and wheel/floor coefficient
 		// Robot measurements
 		public static final Distance kRobotLength = Centimeters.of(67.2), kRobotWidth = Centimeters.of(67.2);
 		public static final Mass kRobotMass = Kilograms.of(50);
 		public static final double kWheelCOF = 1.426;
 
-		// TODO: Update battery values only if the electrical package meaningfully differs.
+
 		public static final double kBatteryInternalResistance = 0.016;
 		public static final double kNominalVoltage = 12.8;
 		public static final double kRobotWarningBatteryVoltageThreshold = 11.6;
