@@ -24,7 +24,6 @@ import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
 
 public class ShootOnTheMoveCommand extends Command {
-  private static final double TURRET_ANGLE_LIMIT_EPSILON_DEG = 1e-9;
   private static final int VELOCITY_FILTER_SAMPLES =
       Math.max(
           1,
@@ -288,13 +287,11 @@ public class ShootOnTheMoveCommand extends Command {
     Rotation2d odometryLookaheadTurretAngle =
         target.minus(lookaheadTurretPosition).getAngle().minus(estimatedPose.getRotation());
     double odometryLookaheadTurretAngleDeg =
-        resolveTurretAngleToLimits(
-            odometryLookaheadTurretAngle.getDegrees(), currentTurretAngleDeg);
+        normalizeTurretAngleToLimits(odometryLookaheadTurretAngle.getDegrees());
     Rotation2d odometryLineOfSightTurretAngle =
         target.minus(turretPosition).getAngle().minus(estimatedPose.getRotation());
     double odometryLineOfSightTurretAngleDeg =
-        resolveTurretAngleToLimits(
-            odometryLineOfSightTurretAngle.getDegrees(), currentTurretAngleDeg);
+        normalizeTurretAngleToLimits(odometryLineOfSightTurretAngle.getDegrees());
     Rotation2d leadCompensation =
         odometryLookaheadTurretAngle.minus(odometryLineOfSightTurretAngle);
     Rotation2d turretAngle = odometryLookaheadTurretAngle;
@@ -327,8 +324,7 @@ public class ShootOnTheMoveCommand extends Command {
                   Rotation2d.fromDegrees(
                       Constants.ShootOnTheMoveConstants.kTurretVisionAimOffsetDegrees));
       turretVisionLineOfSightAngleDeg =
-          resolveTurretAngleToLimits(
-              turretVisionLineOfSightAngle.getDegrees(), currentTurretAngleDeg);
+          normalizeTurretAngleToLimits(turretVisionLineOfSightAngle.getDegrees());
       double turretVisionCorrectionDeg =
           shortestAngleDeltaDegrees(
               turretVisionLineOfSightAngleDeg, odometryLineOfSightTurretAngleDeg);
@@ -347,9 +343,7 @@ public class ShootOnTheMoveCommand extends Command {
             odometryLineOfSightTurretAngle
                 .plus(Rotation2d.fromDegrees(turretVisionAppliedCorrectionDeg))
                 .plus(leadCompensation);
-        turretAngleDeg =
-            resolveTurretAngleToLimits(
-                turretAngle.getDegrees(), odometryLookaheadTurretAngleDeg);
+        turretAngleDeg = normalizeTurretAngleToLimits(turretAngle.getDegrees());
       }
     }
 
@@ -445,28 +439,16 @@ public class ShootOnTheMoveCommand extends Command {
     return MathUtil.inputModulus(currentAngleDeg - previousAngleDeg, -180, 180.0);
   }
 
-  private static double resolveTurretAngleToLimits(double desiredAngleDeg, double referenceAngleDeg) {
-    // The turret can travel exactly one turn, so the same pointing direction may have two legal
-    // representations at the cable-wrap seam. Pick the legal equivalent closest to the current
-    // branch so we preserve the old circular aiming behavior without commanding an unnecessary
-    // full-turn unwind.
-    double wrappedAngleDeg = MathUtil.inputModulus(desiredAngleDeg, kMinAngleDeg, kMaxAngleDeg);
-    double resolvedAngleDeg = MathUtil.clamp(wrappedAngleDeg, kMinAngleDeg, kMaxAngleDeg);
-    double alternateAngleDeg =
-        wrappedAngleDeg + (wrappedAngleDeg <= referenceAngleDeg ? 360.0 : -360.0);
-
-    if (isTurretAngleWithinLimits(alternateAngleDeg)
-        && Math.abs(alternateAngleDeg - referenceAngleDeg)
-            < Math.abs(resolvedAngleDeg - referenceAngleDeg)) {
-      resolvedAngleDeg = alternateAngleDeg;
+  private static double normalizeTurretAngleToLimits(double angleDeg) {
+    // Match the old [-180, 180] behavior, but shift the canonical representation to the turret's
+    // real legal window so 136..180 deg becomes -224..-180 deg instead of clamping at +135.
+    while (angleDeg > kMaxAngleDeg) {
+      angleDeg -= 360.0;
     }
-
-    return MathUtil.clamp(resolvedAngleDeg, kMinAngleDeg, kMaxAngleDeg);
-  }
-
-  private static boolean isTurretAngleWithinLimits(double angleDeg) {
-    return angleDeg >= kMinAngleDeg - TURRET_ANGLE_LIMIT_EPSILON_DEG
-        && angleDeg <= kMaxAngleDeg + TURRET_ANGLE_LIMIT_EPSILON_DEG;
+    while (angleDeg < kMinAngleDeg) {
+      angleDeg += 360.0;
+    }
+    return MathUtil.clamp(angleDeg, kMinAngleDeg, kMaxAngleDeg);
   }
 
   private static double applyTurretVisionTxDeadband(double txDeg) {
