@@ -63,6 +63,16 @@ public class VisionSubsystem extends SubsystemBase {
         return inputs[cameraIndex].latestTargetObservation.tx();
     }
 
+    /** Returns the observation timestamp for the latest simple target sample, or NaN if unavailable. */
+    public double getTargetObservationTimestampSeconds(int cameraIndex) {
+        return inputs[cameraIndex].latestTargetObservationTimestampSeconds;
+    }
+
+    /** Returns the total observation latency for the latest simple target sample. */
+    public double getTargetObservationLatencySeconds(int cameraIndex) {
+        return inputs[cameraIndex].latestTargetObservationLatencySeconds;
+    }
+
     /** Returns the fiducial ID of the latest simple target observation, or -1 if unavailable. */
     public int getTargetTagId(int cameraIndex) {
         return inputs[cameraIndex].latestTargetTagId;
@@ -210,6 +220,12 @@ public class VisionSubsystem extends SubsystemBase {
             Logger.recordOutput(
                     "Vision/Camera" + Integer.toString(cameraIndex) + "/TargetYDegrees",
                     inputs[cameraIndex].latestTargetObservation.ty().getDegrees());
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/TargetObservationTimestampSeconds",
+                    inputs[cameraIndex].latestTargetObservationTimestampSeconds);
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/TargetObservationLatencySeconds",
+                    inputs[cameraIndex].latestTargetObservationLatencySeconds);
             allTagPoses.addAll(tagPoses);
             allRobotPoses.addAll(robotPoses);
             allRobotPosesAccepted.addAll(robotPosesAccepted);

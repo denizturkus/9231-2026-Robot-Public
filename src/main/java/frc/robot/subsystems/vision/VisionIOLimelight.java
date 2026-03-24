@@ -40,6 +40,7 @@ public class VisionIOLimelight implements VisionIO {
     private final Supplier<Transform3d> robotToCameraSupplier;
 
     private final DoubleSubscriber latencySubscriber;
+    private final DoubleSubscriber captureLatencySubscriber;
     private final DoubleSubscriber tvSubscriber;
     private final DoubleSubscriber tidSubscriber;
     private final DoubleSubscriber taSubscriber;
@@ -111,6 +112,7 @@ public class VisionIOLimelight implements VisionIO {
 
         var table = NetworkTableInstance.getDefault().getTable(name);
         latencySubscriber = table.getDoubleTopic("tl").subscribe(0.0);
+        captureLatencySubscriber = table.getDoubleTopic("cl").subscribe(0.0);
         tvSubscriber = table.getDoubleTopic("tv").subscribe(0.0);
         tidSubscriber = table.getDoubleTopic("tid").subscribe(-1.0);
         taSubscriber = table.getDoubleTopic("ta").subscribe(0.0);
@@ -137,6 +139,13 @@ public class VisionIOLimelight implements VisionIO {
         boolean hasRawTarget = tvSubscriber.get() > 0.5;
         int latestTargetTagId = hasRawTarget ? (int) Math.round(tidSubscriber.get()) : -1;
         boolean targetAllowed = hasRawTarget && isSimpleTargetAllowed(latestTargetTagId);
+        var txSample = txSubscriber.getAtomic();
+        var tySample = tySubscriber.getAtomic();
+        var pipelineLatencySample = latencySubscriber.getAtomic();
+        var captureLatencySample = captureLatencySubscriber.getAtomic();
+        double totalTargetLatencySeconds =
+                (pipelineLatencySample.value + captureLatencySample.value) * 1.0e-3;
+        long targetObservationTimestampMicros = Math.max(txSample.timestamp, tySample.timestamp);
 
         inputs.hasTarget = targetAllowed;
         inputs.latestTargetTagId = targetAllowed ? latestTargetTagId : -1;
@@ -144,9 +153,15 @@ public class VisionIOLimelight implements VisionIO {
         inputs.latestTargetObservation =
                 targetAllowed
                         ? new TargetObservation(
-                                Rotation2d.fromDegrees(txSubscriber.get()),
-                                Rotation2d.fromDegrees(tySubscriber.get()))
+                                Rotation2d.fromDegrees(txSample.value),
+                                Rotation2d.fromDegrees(tySample.value))
                         : new TargetObservation(new Rotation2d(), new Rotation2d());
+        inputs.latestTargetObservationTimestampSeconds =
+                targetAllowed && targetObservationTimestampMicros > 0L
+                        ? targetObservationTimestampMicros * 1.0e-6 - totalTargetLatencySeconds
+                        : Double.NaN;
+        inputs.latestTargetObservationLatencySeconds =
+                targetAllowed ? totalTargetLatencySeconds : 0.0;
 
         // Publish robot orientation and live camera pose for MegaTag 2 / moving cameras.
         Transform3d robotToCamera = robotToCameraSupplier.get();

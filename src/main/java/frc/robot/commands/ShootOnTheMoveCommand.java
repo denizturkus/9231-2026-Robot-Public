@@ -11,6 +11,7 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Twist2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.Constants;
 import frc.robot.Constants.GenericConstants.AimPoints;
@@ -21,6 +22,8 @@ import frc.robot.subsystems.shooter.turret.TurretSubsystem;
 import frc.robot.subsystems.vision.VisionConstants;
 import frc.robot.subsystems.vision.VisionSubsystem;
 import frc.robot.util.LimelightHelpers;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -28,6 +31,8 @@ import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
 
 public class ShootOnTheMoveCommand extends Command {
+  private static final double TURRET_ANGLE_HISTORY_SECONDS = 1.0;
+  private static final double MAX_TARGET_OBSERVATION_AGE_SECONDS = 0.25;
   private static final int VELOCITY_FILTER_SAMPLES =
       Math.max(
           1,
@@ -52,6 +57,7 @@ public class ShootOnTheMoveCommand extends Command {
   private final BooleanSupplier manualShotOverrideSupplier;
   private final DoubleSupplier manualHoodAngleSupplier;
   private final DoubleSupplier manualFlywheelRpmSupplier;
+  private final Deque<TimedTurretAngleSample> turretAngleHistory = new ArrayDeque<>();
 
   private LinearFilter turretVelocityFilter = createVelocityFilter();
   private LinearFilter hoodVelocityFilter = createVelocityFilter();
@@ -62,6 +68,8 @@ public class ShootOnTheMoveCommand extends Command {
   private double filteredTurretVisionTxDeg = 0.0;
   private int lastTurretVisionTagId = -1;
   private ShotSolution latestSolution;
+
+  private record TimedTurretAngleSample(double timestampSeconds, double angleDeg) {}
 
   public record ShotSolution(
       boolean valid,
@@ -202,11 +210,15 @@ public class ShootOnTheMoveCommand extends Command {
     filteredTurretVisionTxDeg = 0.0;
     lastTurretVisionTagId = -1;
     latestSolution = null;
+    turretAngleHistory.clear();
+    recordTurretAngleSample(Timer.getFPGATimestamp(), lastTurretAngleDeg);
     shotSolutionConsumer.accept(null);
   }
 
   @Override
   public void execute() {
+    recordTurretAngleSample(Timer.getFPGATimestamp(), turret.getAngle());
+
     Translation2d target =
         switch (targetingMode) {
           case HUB -> AimPoints.getAllianceHubPosition().toTranslation2d();
@@ -292,6 +304,7 @@ public class ShootOnTheMoveCommand extends Command {
   public void end(boolean interrupted) {
     latestSolution = null;
     shotSolutionConsumer.accept(null);
+    turretAngleHistory.clear();
     turret.stop();
     hood.stop();
     if (flywheel != null) {
@@ -322,8 +335,8 @@ public class ShootOnTheMoveCommand extends Command {
     double lookaheadDistance = odometryDistance;
     for (int i = 0; i < Constants.ShootOnTheMoveConstants.kLookaheadIterations; i++) {
       double timeOfFlight =
-          Constants.ShootOnTheMoveConstants.kTimeOfFlightSeconds.get(
-              clampDistance(lookaheadDistance));
+          sampleInterpolatedValue(
+              Constants.ShootOnTheMoveConstants.kTimeOfFlightSecondsTable, lookaheadDistance);
       lookaheadTurretPosition =
           turretPosition.plus(
               new Translation2d(
@@ -331,6 +344,9 @@ public class ShootOnTheMoveCommand extends Command {
                   turretFieldVelocity.getY() * timeOfFlight));
       lookaheadDistance = lookaheadTurretPosition.getDistance(target);
     }
+    double shotTimeOfFlightSeconds =
+        sampleInterpolatedValue(
+            Constants.ShootOnTheMoveConstants.kTimeOfFlightSecondsTable, lookaheadDistance);
 
     double currentTurretAngleDeg = turret.getAngle();
     Rotation2d odometryLookaheadTurretAngle =
@@ -346,11 +362,26 @@ public class ShootOnTheMoveCommand extends Command {
 
     Rotation2d turretAngle = odometryLookaheadTurretAngle;
     double turretAngleDeg = odometryLookaheadTurretAngleDeg;
-    boolean turretVisionActive = false; //shouldUseTurretVision(); TODO: fix turret vision sometime later
+    boolean turretVisionActive = shouldUseTurretVision();
+    double turretVisionObservationTimestampSeconds =
+        turretVisionActive
+            ? vision.getTargetObservationTimestampSeconds(turretVisionCameraIndex)
+            : Double.NaN;
+    double turretVisionObservationAgeSeconds =
+        Double.isFinite(turretVisionObservationTimestampSeconds)
+            ? Timer.getFPGATimestamp() - turretVisionObservationTimestampSeconds
+            : Double.NaN;
+    if (turretVisionActive
+        && (!Double.isFinite(turretVisionObservationTimestampSeconds)
+            || turretVisionObservationAgeSeconds < 0.0
+            || turretVisionObservationAgeSeconds > MAX_TARGET_OBSERVATION_AGE_SECONDS)) {
+      turretVisionActive = false;
+    }
     int turretVisionTagId = turretVisionActive ? vision.getTargetTagId(turretVisionCameraIndex) : -1;
     double limelightDistanceMeters = Double.NaN;
     boolean limelightDistanceAvailable = false;
     double turretVisionLineOfSightAngleDeg = 0.0;
+    double turretVisionObservedTurretAngleDeg = currentTurretAngleDeg;
 
     if (turretVisionActive) {
       limelightDistanceMeters =
@@ -366,8 +397,10 @@ public class ShootOnTheMoveCommand extends Command {
       lastTurretVisionTagId = turretVisionTagId;
 
       double turretVisionTxDeg = applyTurretVisionTxDeadband(filteredTurretVisionTxDeg);
+      turretVisionObservedTurretAngleDeg =
+          getTurretAngleAtTimestamp(turretVisionObservationTimestampSeconds, currentTurretAngleDeg);
       Rotation2d turretVisionLineOfSightAngle =
-          Rotation2d.fromDegrees(currentTurretAngleDeg)
+          Rotation2d.fromDegrees(turretVisionObservedTurretAngleDeg)
               .minus(Rotation2d.fromDegrees(turretVisionTxDeg))
               .plus(
                   Rotation2d.fromDegrees(
@@ -381,15 +414,37 @@ public class ShootOnTheMoveCommand extends Command {
       lastTurretVisionTagId = -1;
     }
 
+    Logger.recordOutput(
+        "ShootOnTheMove/TurretVisionObservationTimestampSeconds",
+        turretVisionObservationTimestampSeconds);
+    Logger.recordOutput(
+        "ShootOnTheMove/TurretVisionObservationAgeSeconds", turretVisionObservationAgeSeconds);
+    Logger.recordOutput(
+        "ShootOnTheMove/TurretVisionObservationLatencySeconds",
+        turretVisionActive && vision != null && turretVisionCameraIndex >= 0
+            ? vision.getTargetObservationLatencySeconds(turretVisionCameraIndex)
+            : 0.0);
+    Logger.recordOutput(
+        "ShootOnTheMove/TurretVisionObservedTurretAngleDeg", turretVisionObservedTurretAngleDeg);
+
     boolean manualShotOverrideActive = manualShotOverrideSupplier.getAsBoolean();
     double hoodAngleDeg =
-        Constants.ShootOnTheMoveConstants.kHoodAngleDegrees.get(clampDistance(lookaheadDistance));
+        sampleInterpolatedValue(
+            Constants.ShootOnTheMoveConstants.kHoodAngleDegreesTable, lookaheadDistance);
     double flywheelRpm =
-        Constants.ShootOnTheMoveConstants.kFlywheelSpeedRpm.get(clampDistance(lookaheadDistance));
+        sampleInterpolatedValue(
+            Constants.ShootOnTheMoveConstants.kFlywheelSpeedRpmTable, lookaheadDistance);
     if (manualShotOverrideActive) {
       hoodAngleDeg = manualHoodAngleSupplier.getAsDouble();
       flywheelRpm = manualFlywheelRpmSupplier.getAsDouble();
     }
+    boolean shotIsValid =
+        Double.isFinite(lookaheadDistance)
+            && Double.isFinite(turretAngleDeg)
+            && Double.isFinite(shotTimeOfFlightSeconds)
+            && shotTimeOfFlightSeconds > 0.0
+            && Double.isFinite(hoodAngleDeg)
+            && Double.isFinite(flywheelRpm);
     double turretVelocityDegPerSecond =
         turretVelocityFilter.calculate(
             shortestAngleDeltaDegrees(turretAngleDeg, lastTurretAngleDeg)
@@ -401,8 +456,7 @@ public class ShootOnTheMoveCommand extends Command {
     lastHoodAngleDeg = hoodAngleDeg;
 
     return new ShotSolution(
-        lookaheadDistance >= Constants.ShootOnTheMoveConstants.kMinDistanceMeters
-            && lookaheadDistance <= Constants.ShootOnTheMoveConstants.kMaxDistanceMeters,
+        shotIsValid,
         target,
         estimatedPose,
         turretPosition,
@@ -451,11 +505,45 @@ public class ShootOnTheMoveCommand extends Command {
     return robotLinearVelocity.plus(rotationalVelocity);
   }
 
-  private static double clampDistance(double distanceMeters) {
-    return MathUtil.clamp(
-        distanceMeters,
-        Constants.ShootOnTheMoveConstants.kMinDistanceMeters,
-        Constants.ShootOnTheMoveConstants.kMaxDistanceMeters);
+  private static double sampleInterpolatedValue(double[][] points, double distanceMeters) {
+    if (points.length == 0) {
+      return Double.NaN;
+    }
+    if (points.length == 1) {
+      return points[0][1];
+    }
+
+    if (distanceMeters <= points[0][0]) {
+      return extrapolateLinearly(points[0], points[1], distanceMeters);
+    }
+    int lastIndex = points.length - 1;
+    if (distanceMeters >= points[lastIndex][0]) {
+      return extrapolateLinearly(points[lastIndex - 1], points[lastIndex], distanceMeters);
+    }
+
+    for (int i = 1; i < points.length; i++) {
+      if (distanceMeters <= points[i][0]) {
+        return extrapolateLinearly(points[i - 1], points[i], distanceMeters);
+      }
+    }
+
+    return Double.NaN;
+  }
+
+  private static double extrapolateLinearly(
+      double[] lowerPoint, double[] upperPoint, double distanceMeters) {
+    if (lowerPoint == null || upperPoint == null || lowerPoint.length < 2 || upperPoint.length < 2) {
+      return Double.NaN;
+    }
+
+    double lowerDistance = lowerPoint[0];
+    double upperDistance = upperPoint[0];
+    if (Math.abs(upperDistance - lowerDistance) <= 1.0e-9) {
+      return upperPoint[1];
+    }
+
+    double interpolationFraction = (distanceMeters - lowerDistance) / (upperDistance - lowerDistance);
+    return lowerPoint[1] + (upperPoint[1] - lowerPoint[1]) * interpolationFraction;
   }
 
   private static LinearFilter createVelocityFilter() {
@@ -488,6 +576,50 @@ public class ShootOnTheMoveCommand extends Command {
     return Math.abs(txDeg) < Constants.ShootOnTheMoveConstants.kTurretVisionTxDeadbandDegrees
         ? 0.0
         : txDeg;
+  }
+
+  private void recordTurretAngleSample(double timestampSeconds, double angleDeg) {
+    turretAngleHistory.addLast(new TimedTurretAngleSample(timestampSeconds, angleDeg));
+    while (turretAngleHistory.size() > 1
+        && turretAngleHistory.peekFirst().timestampSeconds()
+            < timestampSeconds - TURRET_ANGLE_HISTORY_SECONDS) {
+      turretAngleHistory.removeFirst();
+    }
+  }
+
+  private double getTurretAngleAtTimestamp(
+      double timestampSeconds, double fallbackAngleDeg) {
+    if (!Double.isFinite(timestampSeconds) || turretAngleHistory.isEmpty()) {
+      return fallbackAngleDeg;
+    }
+
+    TimedTurretAngleSample firstSample = turretAngleHistory.peekFirst();
+    TimedTurretAngleSample lastSample = turretAngleHistory.peekLast();
+    if (timestampSeconds <= firstSample.timestampSeconds()) {
+      return firstSample.angleDeg();
+    }
+    if (timestampSeconds >= lastSample.timestampSeconds()) {
+      return lastSample.angleDeg();
+    }
+
+    TimedTurretAngleSample previousSample = firstSample;
+    for (TimedTurretAngleSample sample : turretAngleHistory) {
+      if (sample.timestampSeconds() >= timestampSeconds) {
+        double sampleWindowSeconds =
+            sample.timestampSeconds() - previousSample.timestampSeconds();
+        if (sampleWindowSeconds <= 1.0e-9) {
+          return sample.angleDeg();
+        }
+
+        double interpolationFraction =
+            (timestampSeconds - previousSample.timestampSeconds()) / sampleWindowSeconds;
+        return previousSample.angleDeg()
+            + (sample.angleDeg() - previousSample.angleDeg()) * interpolationFraction;
+      }
+      previousSample = sample;
+    }
+
+    return fallbackAngleDeg;
   }
 
   private double calculateLimelightHubDistanceMeters(

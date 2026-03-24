@@ -8,6 +8,7 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -31,6 +32,7 @@ import org.littletonrobotics.junction.networktables.LoggedNetworkNumber;
 public class Superstructure extends SubsystemBase {
     private static final double kMovingLinearThresholdMetersPerSec = 0.05;
     private static final double kMovingAngularThresholdRadPerSec = 0.10;
+    private static final double kHopperJamClearSeconds = 0.35;
     private static final Pose2d[] kEmptyPoses2d = new Pose2d[0];
     private static final Pose3d[] kEmptyPoses3d = new Pose3d[0];
 
@@ -59,6 +61,13 @@ public class Superstructure extends SubsystemBase {
         ALLIANCE; //currently targeting the alliance side to pass fuel
     }
 
+    private enum HopperMode {
+        STOPPED,
+        FEEDING,
+        JAM_CLEARING,
+        MANUAL_REVERSE
+    }
+
     public MotionState m_MotionState = MotionState.STATIONARY;
     public ShooterState m_ShooterState = ShooterState.IDLE;
     public IntakeState m_IntakeState = IntakeState.STOWED;
@@ -84,11 +93,15 @@ public class Superstructure extends SubsystemBase {
     private boolean m_isFeeding = false;
     private boolean m_isHopperRunning = false;
     private boolean m_isShootFuelActive = false;
+    private boolean m_isManualHopperReverseRequested = false;
+    private boolean m_hasActiveHopperJam = false;
     private ShotSolution m_latestShotSolution = null;
+    private HopperMode m_hopperMode = HopperMode.STOPPED;
     private double kFlywheelOpenLoopVolts = flywheelOpenLoopVoltageSetpoint.get();
     private double kFlywheelTestRPM = flywheelTestRPMSetpoint.get();
     private double kHoodAngleTestDegree = hoodTestAngleSetpoint.get();
     private double kTurretAngleTestDegree = turretTestAngleSetpoint.get();
+    private double m_hopperJamRecoveryEndTimestampSeconds = Double.NEGATIVE_INFINITY;
 
     public Superstructure(DriveSubsystem drive, IntakeSubsystem intake, HopperSubsystem hopper, FeederSubsystem feeder, TurretSubsystem turret, FlywheelSubsystem flywheel, HoodSubsystem hood, VisionSubsystem vision) {
         m_drive = drive;
@@ -141,6 +154,10 @@ public class Superstructure extends SubsystemBase {
         boolean flywheelReady = m_flywheel.isNearSetpoint();
         boolean shotValid = m_latestShotSolution != null && m_latestShotSolution.valid();
         boolean readyToShoot = shotValid && turretReady && hoodReady && flywheelReady;
+        boolean intakeDrivingHopper = isIntakeDrivingHopper();
+        boolean shooterDrivingHopper = isShooterDrivingHopper();
+
+        updateHopperControl(intakeDrivingHopper, shooterDrivingHopper);
 
         Logger.recordOutput("Superstructure/MotionState", m_MotionState);
         Logger.recordOutput("Superstructure/IntakeState", m_IntakeState);
@@ -148,6 +165,12 @@ public class Superstructure extends SubsystemBase {
         Logger.recordOutput("Superstructure/TargetingState", m_TargetingState);
         Logger.recordOutput("Superstructure/IsFeeding", m_isFeeding);
         Logger.recordOutput("Superstructure/IsHopperRunning", m_isHopperRunning);
+        Logger.recordOutput("Superstructure/HopperMode", m_hopperMode.name());
+        Logger.recordOutput("Superstructure/HopperDrivenByIntake", intakeDrivingHopper);
+        Logger.recordOutput("Superstructure/HopperDrivenByShooter", shooterDrivingHopper);
+        Logger.recordOutput("Superstructure/HopperManualReverseRequested", m_isManualHopperReverseRequested);
+        Logger.recordOutput("Superstructure/HopperJamClearActive", isAutomaticHopperJamRecoveryActive());
+        Logger.recordOutput("Superstructure/HopperLikelyJammed", m_hopper.isLikelyJammed());
         Logger.recordOutput("Superstructure/HasShotSolution", m_latestShotSolution != null);
         Logger.recordOutput("Superstructure/LatestShotValid", shotValid);
         Logger.recordOutput("Superstructure/Ready/Turret", turretReady);
@@ -190,9 +213,6 @@ public class Superstructure extends SubsystemBase {
                         Commands.runOnce(m_intake::openIntake),
                         Commands.runOnce(m_intake::runIntakeRollers),
                         Commands.runOnce(() -> m_IntakeState = IntakeState.DEPLOYING))
-                .andThen(
-                        Commands.runOnce(m_hopper::feed).onlyIf(() -> !m_isHopperRunning))
-                .andThen(Commands.runOnce(() -> m_isHopperRunning = true))
                 .andThen(Commands.waitUntil(m_intake::isArmNearSetpoint))
                 .andThen(Commands.runOnce(() -> m_IntakeState = IntakeState.INTAKING))
                 .onlyIf(() -> m_IntakeState == IntakeState.STOWED);
@@ -203,9 +223,6 @@ public class Superstructure extends SubsystemBase {
                     Commands.runOnce(m_intake::stopRollers),
                     Commands.runOnce(m_intake::closeIntake),
                     Commands.runOnce(() -> m_IntakeState = IntakeState.STOWING))
-                .andThen(
-                    Commands.runOnce(m_hopper::stop).andThen(Commands.runOnce(() -> m_isHopperRunning = false))
-                            .onlyIf(() -> m_isHopperRunning == true && m_ShooterState != ShooterState.SHOOTING && m_ShooterState != ShooterState.READY))
                 .andThen(Commands.waitUntil(m_intake::isArmNearSetpoint))
                 .andThen(Commands.runOnce(() -> m_IntakeState = IntakeState.STOWED))
                 .onlyIf(() -> m_IntakeState == IntakeState.INTAKING);
@@ -245,8 +262,7 @@ public class Superstructure extends SubsystemBase {
                     m_latestShotSolution = null;
                     m_ShooterState = ShooterState.IDLE;
                     if (m_IntakeState == IntakeState.STOWED) {
-                        Commands.runOnce(m_hopper::stop);
-                        m_isHopperRunning = false;
+                        stopHopperIfShooterOwnsIt();
                     }
                 },
                 m_turret,
@@ -343,11 +359,6 @@ public class Superstructure extends SubsystemBase {
     }
 
     private void startShooterFeed() {
-        if (!m_isHopperRunning) {
-            m_hopper.feed();
-            m_isHopperRunning = true;
-        }
-
         m_feeder.feed();
         m_isFeeding = true;
     }
@@ -358,9 +369,9 @@ public class Superstructure extends SubsystemBase {
     }
 
     private void stopHopperIfShooterOwnsIt() {
-        if (m_isHopperRunning && m_IntakeState == IntakeState.STOWED) {
-            m_hopper.stop();
-            m_isHopperRunning = false;
+        if (m_IntakeState == IntakeState.STOWED && !isIntakeDrivingHopper()) {
+            clearAutomaticHopperJamRecovery();
+            setHopperMode(HopperMode.STOPPED);
         }
     }
 
@@ -401,6 +412,19 @@ public class Superstructure extends SubsystemBase {
 
     public Command HopperFeederOpenLoopCommand() {
         return Commands.parallel(Commands.startEnd(m_feeder::feed, m_feeder::stop),Commands.startEnd(m_hopper::feed, m_hopper::stop));
+    }
+
+    public Command ManualReverseHopperCommand() {
+        Command command =
+                Commands.startEnd(
+                        () -> {
+                            m_isManualHopperReverseRequested = true;
+                            clearAutomaticHopperJamRecovery();
+                        },
+                        () -> m_isManualHopperReverseRequested = false,
+                        this);
+        command.setName("ManualReverseHopper");
+        return command;
     }
 
     public Command HoodManual8DegsCommand() {
@@ -619,4 +643,73 @@ public class Superstructure extends SubsystemBase {
         }
         return "#495057";
         }
+
+    private boolean isIntakeDrivingHopper() {
+        return m_intake.areRollersRunning();
+    }
+
+    private boolean isShooterDrivingHopper() {
+        return m_feeder.isFeedingForward() && m_flywheel.isRunning();
+    }
+
+    private void updateHopperControl(boolean intakeDrivingHopper, boolean shooterDrivingHopper) {
+        boolean shouldFeedForward = intakeDrivingHopper || shooterDrivingHopper;
+        boolean hopperLikelyJammed = shouldFeedForward && m_hopper.isLikelyJammed();
+
+        if (!shouldFeedForward) {
+            clearAutomaticHopperJamRecovery();
+            m_hasActiveHopperJam = false;
+        } else if (hopperLikelyJammed && !m_hasActiveHopperJam && !m_isManualHopperReverseRequested) {
+            requestAutomaticHopperJamRecovery();
+            m_hasActiveHopperJam = true;
+        } else if (!hopperLikelyJammed) {
+            m_hasActiveHopperJam = false;
+        }
+
+        if (m_isManualHopperReverseRequested) {
+            clearAutomaticHopperJamRecovery();
+            setHopperMode(HopperMode.MANUAL_REVERSE);
+            return;
+        }
+
+        if (isAutomaticHopperJamRecoveryActive()) {
+            setHopperMode(HopperMode.JAM_CLEARING);
+            return;
+        }
+
+        if (shouldFeedForward) {
+            setHopperMode(HopperMode.FEEDING);
+            return;
+        }
+
+        setHopperMode(HopperMode.STOPPED);
+    }
+
+    private void requestAutomaticHopperJamRecovery() {
+        m_hopperJamRecoveryEndTimestampSeconds =
+                Timer.getFPGATimestamp() + kHopperJamClearSeconds;
+    }
+
+    private void clearAutomaticHopperJamRecovery() {
+        m_hopperJamRecoveryEndTimestampSeconds = Double.NEGATIVE_INFINITY;
+    }
+
+    private boolean isAutomaticHopperJamRecoveryActive() {
+        return Timer.getFPGATimestamp() < m_hopperJamRecoveryEndTimestampSeconds;
+    }
+
+    private void setHopperMode(HopperMode hopperMode) {
+        if (m_hopperMode == hopperMode) {
+            m_isHopperRunning = hopperMode != HopperMode.STOPPED;
+            return;
+        }
+
+        m_hopperMode = hopperMode;
+        switch (hopperMode) {
+            case FEEDING -> m_hopper.feed();
+            case JAM_CLEARING, MANUAL_REVERSE -> m_hopper.reverse();
+            case STOPPED -> m_hopper.stop();
+        }
+        m_isHopperRunning = hopperMode != HopperMode.STOPPED;
+    }
 }

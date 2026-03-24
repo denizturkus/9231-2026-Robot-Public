@@ -41,6 +41,7 @@ public class IntakeSubsystem extends SubsystemBase {
 	private double m_latestSetpoint = kArmCalibrationAngleDeg;
 
 	private static final double kArmDefaultSetpointToleranceDeg = 5;
+	private static final double kRollerRunningVoltageThresholdVolts = 1.0;
 
 	/**
 	 * Constructs a new Intake.
@@ -146,6 +147,22 @@ public class IntakeSubsystem extends SubsystemBase {
 	 * @return The rollers' velocity, in RPM.
 	 */
 	public double getRollerVelocity() { return m_inputs.rollerRpm; }
+
+	/**
+	 * Returns the currently applied roller voltage.
+	 *
+	 * @return The applied roller voltage.
+	 */
+	public double getRollerAppliedVoltage() { return m_inputs.rollerAppliedVoltage; }
+
+	/**
+	 * Returns whether the intake rollers are actively being driven.
+	 *
+	 * @return Whether the intake rollers are running.
+	 */
+	public boolean areRollersRunning() {
+		return Math.abs(m_inputs.rollerAppliedVoltage) > kRollerRunningVoltageThresholdVolts;
+	}
 
 	/**
 	 * Stops the intake arm in place.

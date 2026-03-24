@@ -194,6 +194,9 @@ public class RobotContainer {
 
         initializeRobotState();
 
+        // Register named commands before building PathPlanner autos.
+        registerNamedCommands();
+
         // Set up auto routines
         autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
 
@@ -223,9 +226,6 @@ public class RobotContainer {
 
         m_allianceChooser.addDefaultOption("Red Alliance", Alliance.Red);
         m_allianceChooser.addOption("Blue Alliance", Alliance.Blue);
-
-        // register named commands for auto path following
-        registerNamedCommands();
 
         // Configure the button bindings
         configureButtonBindings();
@@ -300,8 +300,7 @@ public class RobotContainer {
         // feed balls into the shooter
         operatorController.x().whileTrue(superstructure.ShootFuelCommand());
 
-        
-        operatorController.y().whileTrue(superstructure.HopperFeederOpenLoopCommand());
+        operatorController.y().whileTrue(superstructure.ManualReverseHopperCommand());
         operatorController.rightTrigger().whileTrue(superstructure.FlywheelTestCommand());
 
         
@@ -324,8 +323,6 @@ public class RobotContainer {
         operatorController.back().onTrue(Commands.parallel(Commands.runOnce(turret::zeroEncoders), Commands.runOnce(hood::zeroEncoders)));
 
                 
-        operatorController.a().whileTrue(superstructure.HopperFeederOpenLoopCommand());
-        operatorController.x().whileTrue(superstructure.FlywheelTestCommand());
        // operatorController.rightBumper().onTrue(superstructure.SetTurretAngleTestCommand());
         operatorController.leftBumper().onTrue(superstructure.SetHoodAngleTestCommand()); 
 

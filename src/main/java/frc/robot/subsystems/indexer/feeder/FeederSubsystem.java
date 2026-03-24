@@ -16,6 +16,7 @@ import org.littletonrobotics.junction.Logger;
  */
 public class FeederSubsystem extends SubsystemBase {
 	private final String m_id = "Feeder";
+	private static final double kRunningVoltageThresholdVolts = 1.0;
 	private final FeederIO m_io;
 	protected final FeederIOInputsAutoLogged m_inputs = new FeederIOInputsAutoLogged();
 
@@ -116,5 +117,14 @@ public class FeederSubsystem extends SubsystemBase {
 	 */
 	public double getVelocity() {
 		return m_inputs.rpm / kGearboxReduction;
+	}
+
+	/**
+	 * Returns whether the feeder is actively feeding balls toward the shooter.
+		*
+	 * @return Whether the feeder is running forward.
+	 */
+	public boolean isFeedingForward() {
+		return m_currentGoal.voltage() > kRunningVoltageThresholdVolts;
 	}
 }

@@ -50,42 +50,44 @@ public final class Constants {
 		// TODO: Zero this against the turret Limelight crosshair and shooter centerline.
 		public static final double kTurretVisionAimOffsetDegrees = 0.0;
 
-		// TODO: Revalidate the supported moving-shot distance window.
-		public static final double kMinDistanceMeters = 1.34;
-		public static final double kMaxDistanceMeters = 5.60;
-
 		// Keep this synchronized with Constants.robotToTurret.
 		public static final Translation2d kRobotToTurret =
 				new Translation2d(-0.161,0);
 
 		// TODO: INTERPOLASYON TABLOSUU
+		public static final double[][] kHoodAngleDegreesTable =
+				new double[][] {
+					{2.5,30},
+					{3, 32},
+					{3.5, 36},
+					{4, 37}
+				};
+
 		public static final InterpolatingDoubleTreeMap kHoodAngleDegrees =
-				createInterpolatingMap(
-						new double[][] {
-							{2.5,30},
-							{3, 32},
-							{3.5, 36},
-							{4, 37}
-						});
+				createInterpolatingMap(kHoodAngleDegreesTable);
+
+		public static final double[][] kFlywheelSpeedRpmTable =
+				new double[][] {
+					{2.5, 4300},
+					{3, 4300},
+					{3.5, 4500},
+					{4, 4800}
+				};
 
 		public static final InterpolatingDoubleTreeMap kFlywheelSpeedRpm =
-				createInterpolatingMap(
-						new double[][] {
-							{2.5, 4300},
-							{3, 4300},
-							{3.5, 4500},
-							{4, 4800}
-						});
+				createInterpolatingMap(kFlywheelSpeedRpmTable);
+
+		public static final double[][] kTimeOfFlightSecondsTable =
+				new double[][] {
+					{1.38, 0.90},
+					{1.88, 1.09},
+					{3.15, 1.11},
+					{4.55, 1.12},
+					{5.68, 1.16}
+				};
 
 		public static final InterpolatingDoubleTreeMap kTimeOfFlightSeconds =
-				createInterpolatingMap(
-						new double[][] {
-							{1.38, 0.90},
-							{1.88, 1.09},
-							{3.15, 1.11},
-							{4.55, 1.12},
-							{5.68, 1.16}
-						});
+				createInterpolatingMap(kTimeOfFlightSecondsTable);
 
 		private static InterpolatingDoubleTreeMap createInterpolatingMap(double[][] points) {
 			InterpolatingDoubleTreeMap map = new InterpolatingDoubleTreeMap();

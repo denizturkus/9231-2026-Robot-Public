@@ -72,6 +72,7 @@ public class FlywheelSubsystem extends SubsystemBase {
     private static final double kMinimumClosedLoopReadyRpm = 1.0;
     private static final int kVelocityFilterWindowSamples = 5;
     private static final double kReadyDebounceSeconds = 0.12;
+    private static final double kRunningVoltageThresholdVolts = 1.0;
 
     private final boolean hardwareEnabled;
     private final TalonFX leadMotor;
@@ -366,6 +367,16 @@ public class FlywheelSubsystem extends SubsystemBase {
 
     public double getVelocity() {
         return measuredVelocityRpm;
+    }
+
+    public boolean isRunning() {
+        return switch (controlMode) {
+            case NEUTRAL -> false;
+            case VOLTAGE ->
+                    Math.abs(leadAppliedVolts) > kRunningVoltageThresholdVolts
+                            || Math.abs(followerAppliedVolts) > kRunningVoltageThresholdVolts;
+            case VELOCITY -> Math.abs(clampedSetpointRPM) > kMinimumClosedLoopReadyRpm;
+        };
     }
 
     public void zeroEncoders() {

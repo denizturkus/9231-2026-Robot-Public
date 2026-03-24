@@ -59,6 +59,8 @@ public class VisionIOPhotonVision implements VisionIO {
         boolean hasTarget = inputs.hasTarget;
         int latestTargetTagId = inputs.latestTargetTagId;
         TargetObservation latestTargetObservation = inputs.latestTargetObservation;
+        double latestTargetObservationTimestampSeconds = inputs.latestTargetObservationTimestampSeconds;
+        double latestTargetObservationLatencySeconds = inputs.latestTargetObservationLatencySeconds;
 
         // Read new camera observations
         Set<Short> tagIds = new HashSet<>();
@@ -72,11 +74,15 @@ public class VisionIOPhotonVision implements VisionIO {
                 latestTargetObservation = new TargetObservation(
                         Rotation2d.fromDegrees(result.getBestTarget().getYaw()),
                         Rotation2d.fromDegrees(result.getBestTarget().getPitch()));
+                latestTargetObservationTimestampSeconds = result.getTimestampSeconds();
+                latestTargetObservationLatencySeconds = 0.0;
             } else {
                 hasTarget = false;
                 latestTargetTagId = -1;
                 inputs.latestTargetArea = 0.0;
                 latestTargetObservation = new TargetObservation(new Rotation2d(), new Rotation2d());
+                latestTargetObservationTimestampSeconds = Double.NaN;
+                latestTargetObservationLatencySeconds = 0.0;
             }
 
             // Add pose observation
@@ -138,6 +144,10 @@ public class VisionIOPhotonVision implements VisionIO {
         inputs.hasTarget = hasTarget;
         inputs.latestTargetTagId = hasTarget ? latestTargetTagId : -1;
         inputs.latestTargetObservation = latestTargetObservation;
+        inputs.latestTargetObservationTimestampSeconds =
+                hasTarget ? latestTargetObservationTimestampSeconds : Double.NaN;
+        inputs.latestTargetObservationLatencySeconds =
+                hasTarget ? latestTargetObservationLatencySeconds : 0.0;
 
         // Save pose observations to inputs object
         inputs.poseObservations = new PoseObservation[poseObservations.size()];
