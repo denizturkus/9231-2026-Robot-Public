@@ -1,21 +1,18 @@
 package frc.robot.subsystems.vision;
 
-import edu.wpi.first.apriltag.AprilTagFieldLayout; 
+import edu.wpi.first.apriltag.AprilTagFieldLayout;
 import edu.wpi.first.apriltag.AprilTagFields;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
+import edu.wpi.first.wpilibj.DriverStation;
 import frc.robot.Constants;
 
 public class VisionConstants {
     public static final int chassisCameraIndex = 0;
     public static final int turretCameraIndex = 1;
-
-    // 2026 REBUILT Game Manual 5.11: HUB AprilTag IDs on the welded field.
-    public static final int[] hubAprilTagIds =
-            new int[] {2, 3, 4, 5, 8, 9, 10, 11, 18, 19, 20, 21, 24, 25, 26, 27};
 
     // AprilTag layout
     public static AprilTagFieldLayout aprilTagLayout = AprilTagFieldLayout.loadField(AprilTagFields.kDefaultField);
@@ -25,10 +22,11 @@ public class VisionConstants {
     public static String camera0Name = "limelight-chassis";
     public static String camera1Name = "limelight-turret";
 
-    //TODO: re-measure turretToCamera1 from CAD
     // Robot to camera transforms
     // `turrettToCamera1` is the turret camera transform when the turret is at its zero angle.
-    public static Transform3d robotToCamera0 = new Transform3d(-0.27248, 0.2176, 0.14083, new Rotation3d(0.0, (Math.PI / 6.0) , (7 * Math.PI) / 4.0));
+    // 7pi/4 rad is 315 deg, which is -45 deg in WPILib's CCW-positive convention.
+    public static Transform3d robotToCamera0 =
+            new Transform3d(-0.27248, -0.2176, 0.14083, new Rotation3d(0.0, Math.toRadians(30), Math.toRadians(135)));
     public static Transform3d turretToCamera1 = new Transform3d(-0.151, 0.0, 0, new Rotation3d(0.0, 0.0, Math.PI));
 
     // TODO: Retune global vision rejection thresholds after pose validation
@@ -100,8 +98,15 @@ public class VisionConstants {
 
     public static int[] getSimpleTargetAllowedTagIds(int cameraIndex) {
         return switch (cameraIndex) {
-            case turretCameraIndex -> hubAprilTagIds;
+            case turretCameraIndex -> new int[] {10, 26};
             default -> new int[0];
+        };
+    }
+
+    public static boolean isAllianceHubTargetTag(int tagId) {
+        return switch (DriverStation.getAlliance().orElse(DriverStation.Alliance.Blue)) {
+            case Blue -> tagId == 26;
+            case Red -> tagId == 10;
         };
     }
 

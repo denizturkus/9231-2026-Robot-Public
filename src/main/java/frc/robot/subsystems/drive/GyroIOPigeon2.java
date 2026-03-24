@@ -26,6 +26,9 @@ import java.util.Queue;
 
 /** IO implementation for Pigeon 2. */
 public class GyroIOPigeon2 implements GyroIO {
+    private static final double MOUNT_POSE_YAW_DEGREES = 0;
+    private static final double MOUNT_POSE_ROLL_DEGREES = 180.0;
+
     private final Pigeon2 pigeon =
             new Pigeon2(TunerConstants.DrivetrainConstants.Pigeon2Id, TunerConstants.DrivetrainConstants.CANBusName);
     private final StatusSignal<Angle> yaw = pigeon.getYaw();
@@ -36,8 +39,10 @@ public class GyroIOPigeon2 implements GyroIO {
     public GyroIOPigeon2() {
         Pigeon2Configuration config = new Pigeon2Configuration();
 
-        // upside down pigeon
-        config.MountPose.MountPoseRoll = 180.0;
+        // The Pigeon is mounted upside down with its +Y axis pointing toward robot front.
+        // Apply the full mount pose so reported yaw is in the robot reference frame.
+        config.MountPose.MountPoseYaw = MOUNT_POSE_YAW_DEGREES;
+        config.MountPose.MountPoseRoll = MOUNT_POSE_ROLL_DEGREES;
 
         pigeon.getConfigurator().apply(config);
         pigeon.getConfigurator().setYaw(0.0);

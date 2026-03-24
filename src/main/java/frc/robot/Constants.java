@@ -44,16 +44,8 @@ public final class Constants {
 		public static final double kPhaseDelaySeconds = 0.03;
 		public static final double kVelocityFilterWindowSeconds = 0.1;
 		public static final int kLookaheadIterations = 10;
-		public static final boolean kUseTurretVisionCorrection = true;
-		public static final double kTurretVisionAcquireSeconds = 0.06;
 		public static final double kTurretVisionTxFilterTimeConstantSeconds = 0.08;
 		public static final double kTurretVisionTxDeadbandDegrees = 0.35;
-		public static final double kTurretVisionBlendFactor = 0.35;
-		public static final double kTurretVisionMaxCorrectionDegrees = 8.0;
-		public static final double kTurretVisionMaxOdometryDisagreementDegrees = 20.0;
-		public static final double kTurretVisionBoundaryMarginDegrees = 12.0;
-		public static final double kTurretVisionMinTargetArea = 0.15;
-		public static final double kTurretVisionMaxAngularVelocityRadPerSec = 0.20;
 
 		// TODO: Zero this against the turret Limelight crosshair and shooter centerline.
 		public static final double kTurretVisionAimOffsetDegrees = 0.0;
@@ -70,30 +62,19 @@ public final class Constants {
 		public static final InterpolatingDoubleTreeMap kHoodAngleDegrees =
 				createInterpolatingMap(
 						new double[][] {
-							{1.34, 19.0},
-							{1.78, 19.0},
-							{2.17, 24.0},
-							{2.81, 27.0},
-							{3.82, 29.0},
-							{4.09, 30.0},
-							{4.40, 31.0},
-							{4.77, 32.0},
-							{5.57, 32.0},
-							{5.60, 35.0}
+							{2.5,30},
+							{3, 32},
+							{3.5, 36},
+							{4, 37}
 						});
 
 		public static final InterpolatingDoubleTreeMap kFlywheelSpeedRpm =
 				createInterpolatingMap(
 						new double[][] {
-							{2.12923, 2725.0},
-							{2.504222, 2800.0},
-							{2.889, 2950.0},
-							{3.254686, 3085.0},
-							{3.695324, 3200.0},
-							{3.983757, 3320.0},
-							{4.498437, 3475.0},
-							{4.986071, 3675.0},
-							{5.410986, 4000.0}
+							{2.5, 4300},
+							{3, 4300},
+							{3.5, 4500},
+							{4, 4800}
 						});
 
 		public static final InterpolatingDoubleTreeMap kTimeOfFlightSeconds =

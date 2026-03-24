@@ -22,7 +22,7 @@ public final class HopperConstants {
     public static final boolean kEnableStatorCurrentLimit = true;
 
     // Open-loop voltage commands
-    public static final double kFeedVoltage = 8;
+    public static final double kFeedVoltage = 6;
     public static final double kReverseVoltage = -4.0;
     public static final double kStopVoltage = 0.0;
 

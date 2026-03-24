@@ -7,7 +7,6 @@ import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
-import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -26,8 +25,6 @@ import frc.robot.subsystems.shooter.turret.TurretSubsystem;
 import frc.robot.subsystems.vision.VisionConstants;
 import frc.robot.subsystems.vision.VisionSubsystem;
 import frc.robot.util.GeomUtil;
-
-import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.LoggedNetworkNumber;
 
@@ -78,6 +75,7 @@ public class Superstructure extends SubsystemBase {
     public final VisionSubsystem m_vision;
 
     private final LoggedNetworkNumber flywheelOpenLoopVoltageSetpoint = new LoggedNetworkNumber("LiveSetpoints/FlywheelVoltageSetpoint", 2);
+    private final LoggedNetworkNumber targetingManualShotEnabledSetpoint = new LoggedNetworkNumber("LiveSetpoints/TargetingManualShotEnabled", 0);
     private final LoggedNetworkNumber turretTestAngleSetpoint = new LoggedNetworkNumber("LiveSetpoints/TurretAngleSetpoint", 30);
     private final LoggedNetworkNumber hoodTestAngleSetpoint = new LoggedNetworkNumber("LiveSetpoints/HoodAngleSetpoint", 30);
     private final LoggedNetworkNumber flywheelTestRPMSetpoint = new LoggedNetworkNumber("LiveSetpoints/FlywheelRPMSetpoint", 2500);
@@ -179,6 +177,9 @@ public class Superstructure extends SubsystemBase {
                 "Superstructure/DriveAngularSpeedRadPerSec",
                 speeds.omegaRadiansPerSecond,
                 "radians_per_second");
+        Logger.recordOutput("Superstructure/TargetingManualShotEnabled", isTargetingManualShotEnabled());
+        Logger.recordOutput("Superstructure/TargetingManualHoodAngleDeg", kHoodAngleTestDegree);
+        Logger.recordOutput("Superstructure/TargetingManualFlywheelRpm", kFlywheelTestRPM);
 
         updateShotField();
     }
@@ -225,14 +226,14 @@ public class Superstructure extends SubsystemBase {
 
     public Command TargetHubCommand() {
         Command command = createShootOnTheMoveCommand(
-                TargetingState.HUB, ShootOnTheMoveCommand.hubTargetSupplier());
+                TargetingState.HUB, ShootOnTheMoveCommand.TargetingMode.HUB);
         command.setName("TargetHub");
         return command;
     }
 
     public Command TargetAllianceSideCommand() {
         Command command = createShootOnTheMoveCommand(
-                TargetingState.ALLIANCE, ShootOnTheMoveCommand.allianceSideTargetSupplier());
+                TargetingState.ALLIANCE, ShootOnTheMoveCommand.TargetingMode.ALLIANCE_SIDE);
         command.setName("TargetAllianceSide");
         return command;
     }
@@ -257,16 +258,19 @@ public class Superstructure extends SubsystemBase {
     }
 
     private Command createShootOnTheMoveCommand(
-            TargetingState targetingState, Supplier<Translation2d> targetSupplier) {
+            TargetingState targetingState, ShootOnTheMoveCommand.TargetingMode targetingMode) {
         return Commands.parallel(
                         new ShootOnTheMoveCommand(
                                 m_drive,
                                 m_turret,
                                 m_hood,
-                                targetSupplier,
+                                targetingMode,
                                 m_vision,
                                 turretCameraIndex,
-                                this::setLatestShotSolution),
+                                this::setLatestShotSolution,
+                                this::isTargetingManualShotEnabled,
+                                hoodTestAngleSetpoint::get,
+                                flywheelTestRPMSetpoint::get),
                         Commands.run(() -> updateShootOnTheMoveState(targetingState)))
                 .beforeStarting(() -> {
                     m_TargetingState = targetingState;
@@ -292,6 +296,10 @@ public class Superstructure extends SubsystemBase {
         if (!m_isShootFuelActive) {
             m_ShooterState = ShooterState.LOADING;
         }
+    }
+
+    private boolean isTargetingManualShotEnabled() {
+        return targetingManualShotEnabledSetpoint.get() > 0.5;
     }
 
     private void setLatestShotSolution(ShotSolution shotSolution) {

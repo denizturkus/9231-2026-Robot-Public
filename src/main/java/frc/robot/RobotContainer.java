@@ -305,11 +305,9 @@ public class RobotContainer {
         operatorController.rightTrigger().whileTrue(superstructure.FlywheelTestCommand());
 
         
-        operatorController.rightBumper().onTrue(superstructure.SetTurretAngleTestCommand());
-
         // automated targeting
-        //operatorController.rightBumper().onTrue(superstructure.TargetHubCommand()); TODO: uncomment target hub
-        operatorController.leftBumper().onTrue(superstructure.TargetAllianceSideCommand());
+        operatorController.rightBumper().onTrue(superstructure.TargetHubCommand());
+        //operatorController.leftBumper().onTrue(superstructure.TargetAllianceSideCommand());
         operatorController.leftTrigger().onTrue(superstructure.CancelTargetingCommand());
 
         // sets hood angles manually (degrees)
@@ -325,12 +323,11 @@ public class RobotContainer {
         // zeroes hood and turret encoders and gets current positions as their zeroes
         operatorController.back().onTrue(Commands.parallel(Commands.runOnce(turret::zeroEncoders), Commands.runOnce(hood::zeroEncoders)));
 
-                /* 
+                
         operatorController.a().whileTrue(superstructure.HopperFeederOpenLoopCommand());
         operatorController.x().whileTrue(superstructure.FlywheelTestCommand());
-        operatorController.y().whileTrue(superstructure.FlywheelOpenLoopCommand());
-        operatorController.rightBumper().onTrue(superstructure.SetTurretAngleTestCommand());
-        operatorController.leftBumper().onTrue(superstructure.SetHoodAngleTestCommand()); */
+       // operatorController.rightBumper().onTrue(superstructure.SetTurretAngleTestCommand());
+        operatorController.leftBumper().onTrue(superstructure.SetHoodAngleTestCommand()); 
 
         // some music in case robot fails to motivate people
         musicController.leftStick().onTrue(Commands.runOnce(this::configureOrchestra).ignoringDisable(true));

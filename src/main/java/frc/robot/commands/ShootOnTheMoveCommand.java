@@ -6,6 +6,7 @@ import static frc.robot.subsystems.shooter.turret.TurretConstants.kMinAngleDeg;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.filter.LinearFilter;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Twist2d;
@@ -17,10 +18,13 @@ import frc.robot.subsystems.drive.DriveSubsystem;
 import frc.robot.subsystems.shooter.flywheel.FlywheelSubsystem;
 import frc.robot.subsystems.shooter.hood.HoodSubsystem;
 import frc.robot.subsystems.shooter.turret.TurretSubsystem;
+import frc.robot.subsystems.vision.VisionConstants;
 import frc.robot.subsystems.vision.VisionSubsystem;
+import frc.robot.util.LimelightHelpers;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
+import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
 
 public class ShootOnTheMoveCommand extends Command {
@@ -31,17 +35,23 @@ public class ShootOnTheMoveCommand extends Command {
               Math.round(
                   Constants.ShootOnTheMoveConstants.kVelocityFilterWindowSeconds
                       / Constants.kLoopPeriodSeconds));
-  private static final int TURRET_VISION_ACQUIRE_LOOPS =
-      loopsForSeconds(Constants.ShootOnTheMoveConstants.kTurretVisionAcquireSeconds);
+
+  public enum TargetingMode {
+    HUB,
+    ALLIANCE_SIDE
+  }
 
   private final DriveSubsystem drive;
   private final TurretSubsystem turret;
   private final HoodSubsystem hood;
   private final FlywheelSubsystem flywheel;
-  private final Supplier<Translation2d> targetSupplier;
+  private final TargetingMode targetingMode;
   private final VisionSubsystem vision;
   private final int turretVisionCameraIndex;
   private final Consumer<ShotSolution> shotSolutionConsumer;
+  private final BooleanSupplier manualShotOverrideSupplier;
+  private final DoubleSupplier manualHoodAngleSupplier;
+  private final DoubleSupplier manualFlywheelRpmSupplier;
 
   private LinearFilter turretVelocityFilter = createVelocityFilter();
   private LinearFilter hoodVelocityFilter = createVelocityFilter();
@@ -49,9 +59,6 @@ public class ShootOnTheMoveCommand extends Command {
 
   private double lastTurretAngleDeg = 0.0;
   private double lastHoodAngleDeg = 0.0;
-  private boolean turretVisionLocked = false;
-  private int turretVisionSeenLoops = 0;
-  private int turretVisionMissedLoops = 0;
   private double filteredTurretVisionTxDeg = 0.0;
   private int lastTurretVisionTagId = -1;
   private ShotSolution latestSolution;
@@ -62,22 +69,20 @@ public class ShootOnTheMoveCommand extends Command {
       Pose2d estimatedPose,
       Translation2d turretPosition,
       Translation2d lookaheadTurretPosition,
-      double distanceMeters,
-      boolean turretVisionRawAvailable,
+      double odometryDistanceMeters,
+      double predictedDistanceMeters,
+      boolean limelightDistanceAvailable,
+      double limelightDistanceMeters,
       boolean turretVisionActive,
       int turretVisionTagId,
       double turretAngleDeg,
       Rotation2d turretAngle,
       double odometryTurretAngleDeg,
-      Rotation2d odometryTurretAngle,
       Rotation2d leadCompensation,
-      Rotation2d turretVisionTx,
       double turretVisionFilteredTxDeg,
       double turretVisionLineOfSightAngleDeg,
-      Rotation2d turretVisionLineOfSightAngle,
-      double turretVisionAppliedCorrectionDeg,
-      boolean turretVisionCorrectionRejected,
       double turretVelocityDegPerSecond,
+      boolean manualShotOverrideActive,
       double hoodAngleDeg,
       double hoodVelocityDegPerSecond,
       double flywheelRpm) {}
@@ -86,79 +91,105 @@ public class ShootOnTheMoveCommand extends Command {
       DriveSubsystem drive,
       TurretSubsystem turret,
       HoodSubsystem hood,
-      FlywheelSubsystem flywheel) {
-    this(drive, turret, hood, flywheel, hubTargetSupplier(), null, -1, null);
-  }
-
-  public ShootOnTheMoveCommand(
-      DriveSubsystem drive,
-      TurretSubsystem turret,
-      HoodSubsystem hood,
-      FlywheelSubsystem flywheel,
-      Supplier<Translation2d> targetSupplier) {
-    this(drive, turret, hood, flywheel, targetSupplier, null, -1, null);
-  }
-
-  public ShootOnTheMoveCommand(
-      DriveSubsystem drive,
-      TurretSubsystem turret,
-      HoodSubsystem hood,
-      FlywheelSubsystem flywheel,
-      Supplier<Translation2d> targetSupplier,
-      VisionSubsystem vision,
-      int turretVisionCameraIndex) {
-    this(drive, turret, hood, flywheel, targetSupplier, vision, turretVisionCameraIndex, null);
-  }
-
-  public ShootOnTheMoveCommand(
-      DriveSubsystem drive,
-      TurretSubsystem turret,
-      HoodSubsystem hood,
-      Supplier<Translation2d> targetSupplier,
+      TargetingMode targetingMode,
       VisionSubsystem vision,
       int turretVisionCameraIndex,
       Consumer<ShotSolution> shotSolutionConsumer) {
-    this(drive, turret, hood, null, targetSupplier, vision, turretVisionCameraIndex, shotSolutionConsumer);
+    this(
+        drive,
+        turret,
+        hood,
+        targetingMode,
+        vision,
+        turretVisionCameraIndex,
+        shotSolutionConsumer,
+        () -> false,
+        () -> 0.0,
+        () -> 0.0);
   }
 
-  private ShootOnTheMoveCommand(
+  public ShootOnTheMoveCommand(
+      DriveSubsystem drive,
+      TurretSubsystem turret,
+      HoodSubsystem hood,
+      TargetingMode targetingMode,
+      VisionSubsystem vision,
+      int turretVisionCameraIndex,
+      Consumer<ShotSolution> shotSolutionConsumer,
+      BooleanSupplier manualShotOverrideSupplier,
+      DoubleSupplier manualHoodAngleSupplier,
+      DoubleSupplier manualFlywheelRpmSupplier) {
+    this(
+        drive,
+        turret,
+        hood,
+        null,
+        targetingMode,
+        vision,
+        turretVisionCameraIndex,
+        shotSolutionConsumer,
+        manualShotOverrideSupplier,
+        manualHoodAngleSupplier,
+        manualFlywheelRpmSupplier);
+  }
+
+  public ShootOnTheMoveCommand(
       DriveSubsystem drive,
       TurretSubsystem turret,
       HoodSubsystem hood,
       FlywheelSubsystem flywheel,
-      Supplier<Translation2d> targetSupplier,
+      TargetingMode targetingMode,
       VisionSubsystem vision,
       int turretVisionCameraIndex,
       Consumer<ShotSolution> shotSolutionConsumer) {
+    this(
+        drive,
+        turret,
+        hood,
+        flywheel,
+        targetingMode,
+        vision,
+        turretVisionCameraIndex,
+        shotSolutionConsumer,
+        () -> false,
+        () -> 0.0,
+        () -> 0.0);
+  }
+
+  public ShootOnTheMoveCommand(
+      DriveSubsystem drive,
+      TurretSubsystem turret,
+      HoodSubsystem hood,
+      FlywheelSubsystem flywheel,
+      TargetingMode targetingMode,
+      VisionSubsystem vision,
+      int turretVisionCameraIndex,
+      Consumer<ShotSolution> shotSolutionConsumer,
+      BooleanSupplier manualShotOverrideSupplier,
+      DoubleSupplier manualHoodAngleSupplier,
+      DoubleSupplier manualFlywheelRpmSupplier) {
     this.drive = Objects.requireNonNull(drive, "drive");
     this.turret = Objects.requireNonNull(turret, "turret");
     this.hood = Objects.requireNonNull(hood, "hood");
     this.flywheel = flywheel;
-    this.targetSupplier = Objects.requireNonNull(targetSupplier, "targetSupplier");
+    this.targetingMode = Objects.requireNonNull(targetingMode, "targetingMode");
     this.vision = vision;
     this.turretVisionCameraIndex = turretVisionCameraIndex;
     this.shotSolutionConsumer =
         shotSolutionConsumer != null ? shotSolutionConsumer : (solution) -> {};
+    this.manualShotOverrideSupplier =
+        manualShotOverrideSupplier != null ? manualShotOverrideSupplier : () -> false;
+    this.manualHoodAngleSupplier =
+        manualHoodAngleSupplier != null ? manualHoodAngleSupplier : () -> 0.0;
+    this.manualFlywheelRpmSupplier =
+        manualFlywheelRpmSupplier != null ? manualFlywheelRpmSupplier : () -> 0.0;
 
-    setName("ShootOnTheMove");
+    setName("ShootOnTheMove/" + targetingMode.name());
     if (flywheel != null) {
       addRequirements(turret, hood, flywheel);
     } else {
       addRequirements(turret, hood);
     }
-  }
-
-  public static Supplier<Translation2d> hubTargetSupplier() {
-    return () -> AimPoints.getAllianceHubPosition().toTranslation2d();
-  }
-
-  public static Supplier<Translation2d> allianceSideTargetSupplier() {
-    return () -> AimPoints.getAllianceFarSidePosition().toTranslation2d();
-  }
-
-  public static Supplier<Translation2d> targetSupplierFor(Translation2d target) {
-    Translation2d fixedTarget = Objects.requireNonNull(target, "target");
-    return () -> fixedTarget;
   }
 
   @Override
@@ -168,9 +199,6 @@ public class ShootOnTheMoveCommand extends Command {
     turretVisionTxFilter = createTurretVisionTxFilter();
     lastTurretAngleDeg = turret.getAngle();
     lastHoodAngleDeg = hood.getAngle();
-    turretVisionLocked = false;
-    turretVisionSeenLoops = 0;
-    turretVisionMissedLoops = 0;
     filteredTurretVisionTxDeg = 0.0;
     lastTurretVisionTagId = -1;
     latestSolution = null;
@@ -179,12 +207,18 @@ public class ShootOnTheMoveCommand extends Command {
 
   @Override
   public void execute() {
-    Translation2d target = targetSupplier.get();
+    Translation2d target =
+        switch (targetingMode) {
+          case HUB -> AimPoints.getAllianceHubPosition().toTranslation2d();
+          case ALLIANCE_SIDE -> AimPoints.getAllianceFarSidePosition().toTranslation2d();
+        };
+
     if (target == null) {
       latestSolution = null;
       shotSolutionConsumer.accept(null);
       Logger.recordOutput("ShootOnTheMove/HasTarget", false);
       Logger.recordOutput("ShootOnTheMove/ValidShot", false);
+      clearDistanceLogs();
       return;
     }
 
@@ -198,6 +232,7 @@ public class ShootOnTheMoveCommand extends Command {
     }
 
     Logger.recordOutput("ShootOnTheMove/HasTarget", true);
+    Logger.recordOutput("ShootOnTheMove/IsHubTargeting", targetingMode == TargetingMode.HUB);
     Logger.recordOutput("ShootOnTheMove/Target", new Pose2d(latestSolution.target(), Rotation2d.kZero));
     Logger.recordOutput("ShootOnTheMove/EstimatedRobotPose", latestSolution.estimatedPose());
     Logger.recordOutput(
@@ -206,13 +241,29 @@ public class ShootOnTheMoveCommand extends Command {
     Logger.recordOutput(
         "ShootOnTheMove/PredictedTurretPosition",
         new Pose2d(latestSolution.lookaheadTurretPosition(), Rotation2d.kZero));
-    Logger.recordOutput("ShootOnTheMove/DistanceMeters", latestSolution.distanceMeters());
+    Logger.recordOutput("ShootOnTheMove/DistanceMeters", latestSolution.predictedDistanceMeters());
     Logger.recordOutput(
-        "ShootOnTheMove/TurretVisionRawAvailable", latestSolution.turretVisionRawAvailable());
+        "ShootOnTheMove/OdometryHubToTurretPivotDistanceMeters",
+        latestSolution.odometryDistanceMeters());
+    Logger.recordOutput(
+        "ShootOnTheMove/PredictedHubToTurretPivotDistanceMeters",
+        latestSolution.predictedDistanceMeters());
+    Logger.recordOutput(
+        "ShootOnTheMove/LimelightHubToTurretPivotDistanceAvailable",
+        latestSolution.limelightDistanceAvailable());
+    Logger.recordOutput(
+        "ShootOnTheMove/LimelightHubToTurretPivotDistanceMeters",
+        latestSolution.limelightDistanceMeters());
+    Logger.recordOutput(
+        "ShootOnTheMove/LimelightMinusOdometryHubDistanceMeters",
+        latestSolution.limelightDistanceAvailable()
+            ? latestSolution.limelightDistanceMeters() - latestSolution.odometryDistanceMeters()
+            : Double.NaN);
     Logger.recordOutput("ShootOnTheMove/TurretVisionActive", latestSolution.turretVisionActive());
     Logger.recordOutput("ShootOnTheMove/TurretVisionTagId", latestSolution.turretVisionTagId());
     Logger.recordOutput(
-        "ShootOnTheMove/TurretVisionTargetArea", vision != null && turretVisionCameraIndex >= 0
+        "ShootOnTheMove/TurretVisionTargetArea",
+        latestSolution.turretVisionActive() && vision != null && turretVisionCameraIndex >= 0
             ? vision.getTargetArea(turretVisionCameraIndex)
             : 0.0);
     Logger.recordOutput("ShootOnTheMove/TurretAngleDeg", latestSolution.turretAngleDeg());
@@ -222,20 +273,14 @@ public class ShootOnTheMoveCommand extends Command {
         "ShootOnTheMove/TurretLeadCompensationDeg",
         latestSolution.leadCompensation().getDegrees());
     Logger.recordOutput(
-        "ShootOnTheMove/TurretVisionTxDeg", latestSolution.turretVisionTx().getDegrees());
-    Logger.recordOutput(
         "ShootOnTheMove/TurretVisionFilteredTxDeg", latestSolution.turretVisionFilteredTxDeg());
     Logger.recordOutput(
         "ShootOnTheMove/TurretVisionLineOfSightAngleDeg",
         latestSolution.turretVisionLineOfSightAngleDeg());
     Logger.recordOutput(
-        "ShootOnTheMove/TurretVisionAppliedCorrectionDeg",
-        latestSolution.turretVisionAppliedCorrectionDeg());
-    Logger.recordOutput(
-        "ShootOnTheMove/TurretVisionCorrectionRejected",
-        latestSolution.turretVisionCorrectionRejected());
-    Logger.recordOutput(
         "ShootOnTheMove/TurretVelocityDegPerSec", latestSolution.turretVelocityDegPerSecond());
+    Logger.recordOutput(
+        "ShootOnTheMove/ManualShotOverrideActive", latestSolution.manualShotOverrideActive());
     Logger.recordOutput("ShootOnTheMove/HoodAngleDeg", latestSolution.hoodAngleDeg());
     Logger.recordOutput(
         "ShootOnTheMove/HoodVelocityDegPerSec", latestSolution.hoodVelocityDegPerSecond());
@@ -254,6 +299,7 @@ public class ShootOnTheMoveCommand extends Command {
     }
     Logger.recordOutput("ShootOnTheMove/HasTarget", false);
     Logger.recordOutput("ShootOnTheMove/ValidShot", false);
+    clearDistanceLogs();
   }
 
   @Override
@@ -263,14 +309,17 @@ public class ShootOnTheMoveCommand extends Command {
 
   private ShotSolution calculateShotSolution(Translation2d target) {
     Pose2d estimatedPose = getLatencyCompensatedPose();
+    Rotation2d turretZeroFieldRotation =
+        estimatedPose.getRotation().plus(Constants.robotToTurret.getRotation().toRotation2d());
     Translation2d turretOffsetField =
         Constants.ShootOnTheMoveConstants.kRobotToTurret.rotateBy(estimatedPose.getRotation());
     Translation2d turretPosition = estimatedPose.getTranslation().plus(turretOffsetField);
     Translation2d turretFieldVelocity =
         calculateTurretFieldVelocity(drive.getFieldRelativeSpeeds(), turretOffsetField);
+    double odometryDistance = turretPosition.getDistance(target);
 
     Translation2d lookaheadTurretPosition = turretPosition;
-    double lookaheadDistance = turretPosition.getDistance(target);
+    double lookaheadDistance = odometryDistance;
     for (int i = 0; i < Constants.ShootOnTheMoveConstants.kLookaheadIterations; i++) {
       double timeOfFlight =
           Constants.ShootOnTheMoveConstants.kTimeOfFlightSeconds.get(
@@ -285,72 +334,62 @@ public class ShootOnTheMoveCommand extends Command {
 
     double currentTurretAngleDeg = turret.getAngle();
     Rotation2d odometryLookaheadTurretAngle =
-        target.minus(lookaheadTurretPosition).getAngle().minus(estimatedPose.getRotation());
+        target.minus(lookaheadTurretPosition).getAngle().minus(turretZeroFieldRotation);
     double odometryLookaheadTurretAngleDeg =
-        normalizeTurretAngleToLimits(odometryLookaheadTurretAngle.getDegrees());
+        applyCableWrapLimits(odometryLookaheadTurretAngle.getDegrees());
     Rotation2d odometryLineOfSightTurretAngle =
-        target.minus(turretPosition).getAngle().minus(estimatedPose.getRotation());
+        target.minus(turretPosition).getAngle().minus(turretZeroFieldRotation);
     double odometryLineOfSightTurretAngleDeg =
-        normalizeTurretAngleToLimits(odometryLineOfSightTurretAngle.getDegrees());
+        applyCableWrapLimits(odometryLineOfSightTurretAngle.getDegrees());
     Rotation2d leadCompensation =
         odometryLookaheadTurretAngle.minus(odometryLineOfSightTurretAngle);
+
     Rotation2d turretAngle = odometryLookaheadTurretAngle;
     double turretAngleDeg = odometryLookaheadTurretAngleDeg;
-    boolean turretVisionRawAvailable = shouldUseTurretVision();
-    if (turretVisionRawAvailable) {
+    boolean turretVisionActive = false; //shouldUseTurretVision(); TODO: fix turret vision sometime later
+    int turretVisionTagId = turretVisionActive ? vision.getTargetTagId(turretVisionCameraIndex) : -1;
+    double limelightDistanceMeters = Double.NaN;
+    boolean limelightDistanceAvailable = false;
+    double turretVisionLineOfSightAngleDeg = 0.0;
+
+    if (turretVisionActive) {
+      limelightDistanceMeters =
+          calculateLimelightHubDistanceMeters(estimatedPose, target, turretVisionTagId);
+      limelightDistanceAvailable = Double.isFinite(limelightDistanceMeters);
       double rawTurretVisionTxDeg = vision.getTargetX(turretVisionCameraIndex).getDegrees();
-      if (!turretVisionLocked && turretVisionSeenLoops == 0) {
+      if (lastTurretVisionTagId != turretVisionTagId) {
         turretVisionTxFilter = createTurretVisionTxFilter();
         filteredTurretVisionTxDeg = rawTurretVisionTxDeg;
       } else {
         filteredTurretVisionTxDeg = turretVisionTxFilter.calculate(rawTurretVisionTxDeg);
       }
-      lastTurretVisionTagId = vision.getTargetTagId(turretVisionCameraIndex);
-    }
-    boolean turretVisionActive = updateTurretVisionLock(turretVisionRawAvailable);
-    int turretVisionTagId = turretVisionActive ? lastTurretVisionTagId : -1;
-    Rotation2d turretVisionTx = Rotation2d.kZero;
-    Rotation2d turretVisionLineOfSightAngle = Rotation2d.kZero;
-    double turretVisionLineOfSightAngleDeg = 0.0;
-    double turretVisionAppliedCorrectionDeg = 0.0;
-    boolean turretVisionCorrectionRejected = false;
+      lastTurretVisionTagId = turretVisionTagId;
 
-    if (turretVisionActive) {
-      turretVisionTx = Rotation2d.fromDegrees(applyTurretVisionTxDeadband(filteredTurretVisionTxDeg));
-      turretVisionLineOfSightAngle =
+      double turretVisionTxDeg = applyTurretVisionTxDeadband(filteredTurretVisionTxDeg);
+      Rotation2d turretVisionLineOfSightAngle =
           Rotation2d.fromDegrees(currentTurretAngleDeg)
-              .minus(turretVisionTx)
+              .minus(Rotation2d.fromDegrees(turretVisionTxDeg))
               .plus(
                   Rotation2d.fromDegrees(
                       Constants.ShootOnTheMoveConstants.kTurretVisionAimOffsetDegrees));
       turretVisionLineOfSightAngleDeg =
-          normalizeTurretAngleToLimits(turretVisionLineOfSightAngle.getDegrees());
-      double turretVisionCorrectionDeg =
-          shortestAngleDeltaDegrees(
-              turretVisionLineOfSightAngleDeg, odometryLineOfSightTurretAngleDeg);
-
-      if (shouldRejectVisionCorrection(
-          odometryLookaheadTurretAngleDeg, turretVisionCorrectionDeg)) {
-        turretVisionCorrectionRejected = true;
-      } else {
-        turretVisionAppliedCorrectionDeg =
-            MathUtil.clamp(
-                turretVisionCorrectionDeg
-                    * Constants.ShootOnTheMoveConstants.kTurretVisionBlendFactor,
-                -Constants.ShootOnTheMoveConstants.kTurretVisionMaxCorrectionDegrees,
-                Constants.ShootOnTheMoveConstants.kTurretVisionMaxCorrectionDegrees);
-        turretAngle =
-            odometryLineOfSightTurretAngle
-                .plus(Rotation2d.fromDegrees(turretVisionAppliedCorrectionDeg))
-                .plus(leadCompensation);
-        turretAngleDeg = normalizeTurretAngleToLimits(turretAngle.getDegrees());
-      }
+          applyCableWrapLimits(turretVisionLineOfSightAngle.getDegrees());
+      turretAngle = turretVisionLineOfSightAngle.plus(leadCompensation);
+      turretAngleDeg = applyCableWrapLimits(turretAngle.getDegrees());
+    } else {
+      filteredTurretVisionTxDeg = 0.0;
+      lastTurretVisionTagId = -1;
     }
 
+    boolean manualShotOverrideActive = manualShotOverrideSupplier.getAsBoolean();
     double hoodAngleDeg =
         Constants.ShootOnTheMoveConstants.kHoodAngleDegrees.get(clampDistance(lookaheadDistance));
     double flywheelRpm =
         Constants.ShootOnTheMoveConstants.kFlywheelSpeedRpm.get(clampDistance(lookaheadDistance));
+    if (manualShotOverrideActive) {
+      hoodAngleDeg = manualHoodAngleSupplier.getAsDouble();
+      flywheelRpm = manualFlywheelRpmSupplier.getAsDouble();
+    }
     double turretVelocityDegPerSecond =
         turretVelocityFilter.calculate(
             shortestAngleDeltaDegrees(turretAngleDeg, lastTurretAngleDeg)
@@ -368,22 +407,20 @@ public class ShootOnTheMoveCommand extends Command {
         estimatedPose,
         turretPosition,
         lookaheadTurretPosition,
+        odometryDistance,
         lookaheadDistance,
-        turretVisionRawAvailable,
+        limelightDistanceAvailable,
+        limelightDistanceMeters,
         turretVisionActive,
         turretVisionTagId,
         turretAngleDeg,
         turretAngle,
         odometryLineOfSightTurretAngleDeg,
-        odometryLineOfSightTurretAngle,
         leadCompensation,
-        turretVisionTx,
         filteredTurretVisionTxDeg,
         turretVisionLineOfSightAngleDeg,
-        turretVisionLineOfSightAngle,
-        turretVisionAppliedCorrectionDeg,
-        turretVisionCorrectionRejected,
         turretVelocityDegPerSecond,
+        manualShotOverrideActive,
         hoodAngleDeg,
         hoodVelocityDegPerSecond,
         flywheelRpm);
@@ -421,10 +458,6 @@ public class ShootOnTheMoveCommand extends Command {
         Constants.ShootOnTheMoveConstants.kMaxDistanceMeters);
   }
 
-  private static int loopsForSeconds(double seconds) {
-    return Math.max(1, (int) Math.ceil(seconds / Constants.kLoopPeriodSeconds));
-  }
-
   private static LinearFilter createVelocityFilter() {
     return LinearFilter.movingAverage(VELOCITY_FILTER_SAMPLES);
   }
@@ -439,16 +472,16 @@ public class ShootOnTheMoveCommand extends Command {
     return MathUtil.inputModulus(currentAngleDeg - previousAngleDeg, -180, 180.0);
   }
 
-  private static double normalizeTurretAngleToLimits(double angleDeg) {
-    // Match the old [-180, 180] behavior, but shift the canonical representation to the turret's
-    // real legal window so 136..180 deg becomes -224..-180 deg instead of clamping at +135.
-    while (angleDeg > kMaxAngleDeg) {
-      angleDeg -= 360.0;
+  private static double applyCableWrapLimits(double angleDeg) {
+    // Rotation2d math gives us a circular angle. Shift it once across the cable-wrap seam so the
+    // commanded turret angle always stays in the physical [-225, 135] window.
+    if (angleDeg > kMaxAngleDeg) {
+      return angleDeg - 360.0;
     }
-    while (angleDeg < kMinAngleDeg) {
-      angleDeg += 360.0;
+    if (angleDeg < kMinAngleDeg) {
+      return angleDeg + 360.0;
     }
-    return MathUtil.clamp(angleDeg, kMinAngleDeg, kMaxAngleDeg);
+    return angleDeg;
   }
 
   private static double applyTurretVisionTxDeadband(double txDeg) {
@@ -457,57 +490,51 @@ public class ShootOnTheMoveCommand extends Command {
         : txDeg;
   }
 
-  private boolean updateTurretVisionLock(boolean hasRawTarget) {
-    if (hasRawTarget) {
-      turretVisionSeenLoops++;
-      turretVisionMissedLoops = 0;
-      if (!turretVisionLocked && turretVisionSeenLoops >= TURRET_VISION_ACQUIRE_LOOPS) {
-        turretVisionLocked = true;
-      }
-      return turretVisionLocked;
+  private double calculateLimelightHubDistanceMeters(
+      Pose2d estimatedPose, Translation2d hubTarget, int targetTagId) {
+    if (vision == null || turretVisionCameraIndex < 0 || targetTagId < 0) {
+      return Double.NaN;
     }
 
-    turretVisionSeenLoops = 0;
-    turretVisionLocked = false;
-    turretVisionMissedLoops = 0;
-    filteredTurretVisionTxDeg = 0.0;
-    lastTurretVisionTagId = -1;
-    return turretVisionLocked;
-  }
-
-  private boolean shouldRejectVisionCorrection(
-      double odometryTurretAngleDeg, double turretVisionCorrectionDeg) {
-    if (Math.abs(turretVisionCorrectionDeg)
-        > Constants.ShootOnTheMoveConstants.kTurretVisionMaxOdometryDisagreementDegrees) {
-      return true;
+    String cameraName = "limelight-turret";
+    var tagPose = VisionConstants.aprilTagLayout.getTagPose(targetTagId);
+    if (cameraName.isEmpty() || tagPose.isEmpty()) {
+      return Double.NaN;
     }
 
-    double boundaryMarginDeg =
-        Constants.ShootOnTheMoveConstants.kTurretVisionBoundaryMarginDegrees;
-    return pushesTowardCableLimit(turret.getAngle(), turretVisionCorrectionDeg, boundaryMarginDeg)
-        || pushesTowardCableLimit(odometryTurretAngleDeg, turretVisionCorrectionDeg, boundaryMarginDeg);
-  }
+    Pose3d targetPoseRobotSpace = LimelightHelpers.getTargetPose3d_RobotSpace(cameraName);
+    Translation2d tagTranslationRobot = targetPoseRobotSpace.getTranslation().toTranslation2d();
+    if (tagTranslationRobot.getNorm() < 1.0e-6) {
+      return Double.NaN;
+    }
 
-  private static boolean pushesTowardCableLimit(
-      double angleDeg, double correctionDeg, double boundaryMarginDeg) {
-    return (angleDeg >= kMaxAngleDeg - boundaryMarginDeg && correctionDeg > 0.0)
-        || (angleDeg <= kMinAngleDeg + boundaryMarginDeg && correctionDeg < 0.0);
+    Translation2d hubOffsetField =
+        hubTarget.minus(tagPose.get().getTranslation().toTranslation2d());
+    Translation2d hubOffsetRobot = hubOffsetField.rotateBy(estimatedPose.getRotation().unaryMinus());
+    Translation2d hubTranslationRobot = tagTranslationRobot.plus(hubOffsetRobot);
+    Translation2d turretPivotRobot =
+        new Translation2d(Constants.robotToTurret.getX(), Constants.robotToTurret.getY());
+    return hubTranslationRobot.getDistance(turretPivotRobot);
   }
 
   private boolean shouldUseTurretVision() {
-    if (!Constants.ShootOnTheMoveConstants.kUseTurretVisionCorrection
-        || vision == null
-        || turretVisionCameraIndex < 0) {
+    if (targetingMode != TargetingMode.HUB || vision == null || turretVisionCameraIndex < 0) {
       return false;
     }
 
-    if (!vision.hasTarget(turretVisionCameraIndex)
-        || vision.getTargetArea(turretVisionCameraIndex)
-            < Constants.ShootOnTheMoveConstants.kTurretVisionMinTargetArea) {
+    if (!vision.hasTarget(turretVisionCameraIndex)) {
       return false;
     }
 
-    return Math.abs(drive.getRobotRelativeSpeeds().omegaRadiansPerSecond)
-        <= Constants.ShootOnTheMoveConstants.kTurretVisionMaxAngularVelocityRadPerSec;
+    return VisionConstants.isAllianceHubTargetTag(vision.getTargetTagId(turretVisionCameraIndex));
+  }
+
+  private void clearDistanceLogs() {
+    Logger.recordOutput("ShootOnTheMove/DistanceMeters", Double.NaN);
+    Logger.recordOutput("ShootOnTheMove/OdometryHubToTurretPivotDistanceMeters", Double.NaN);
+    Logger.recordOutput("ShootOnTheMove/PredictedHubToTurretPivotDistanceMeters", Double.NaN);
+    Logger.recordOutput("ShootOnTheMove/LimelightHubToTurretPivotDistanceAvailable", false);
+    Logger.recordOutput("ShootOnTheMove/LimelightHubToTurretPivotDistanceMeters", Double.NaN);
+    Logger.recordOutput("ShootOnTheMove/LimelightMinusOdometryHubDistanceMeters", Double.NaN);
   }
 }

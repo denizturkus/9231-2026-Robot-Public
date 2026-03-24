@@ -12,7 +12,7 @@ public class FeederConstants {
 
 	// Control parameters
 	// Voltage when feeding, ~2000 RPM for the Kraken X60.
-	public static final double kFeedVoltage = 6;
+	public static final double kFeedVoltage = 4.5;
 	public static final double kUnfeedVoltage = -3.5;
 
 	// Gearbox reduction
