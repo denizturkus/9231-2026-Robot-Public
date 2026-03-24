@@ -119,6 +119,13 @@ public final class Constants {
     public static final Mode simMode = Mode.SIM;
     public static final Mode currentMode = RobotBase.isReal() ? Mode.REAL : simMode;
 
+    public static DriverStation.Alliance getActiveAlliance() {
+        if (currentMode != Mode.REAL) {
+            return RobotContainer.currentAlliance;
+        }
+        return DriverStation.getAlliance().orElse(RobotContainer.currentAlliance);
+    }
+
     public static enum Mode {
         /** Running on a real robot. */
         REAL,
@@ -153,19 +160,19 @@ public final class Constants {
 			}
 
 			public static final Translation3d getAllianceHubPosition() {
-			return DriverStation.getAlliance().orElse(DriverStation.Alliance.Blue) == DriverStation.Alliance.Red
+			return getActiveAlliance() == DriverStation.Alliance.Red
 				? RED_HUB.value
 				: BLUE_HUB.value;
 			}
 
 			public static final Translation3d getAllianceOutpostPosition() {
-			return DriverStation.getAlliance().orElse(DriverStation.Alliance.Blue) == DriverStation.Alliance.Red
+			return getActiveAlliance() == DriverStation.Alliance.Red
 				? RED_OUTPOST.value
 				: BLUE_OUTPOST.value;
 			}
 
 			public static final Translation3d getAllianceFarSidePosition() {
-			return DriverStation.getAlliance().orElse(DriverStation.Alliance.Blue) == DriverStation.Alliance.Red
+			return getActiveAlliance() == DriverStation.Alliance.Red
 				? RED_FAR_SIDE.value
 				: BLUE_FAR_SIDE.value;
 			}

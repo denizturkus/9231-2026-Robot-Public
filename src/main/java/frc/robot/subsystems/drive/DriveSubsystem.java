@@ -120,6 +120,7 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
 
     private final SwerveDriveKinematics kinematics = new SwerveDriveKinematics(getModuleTranslations());
     private Rotation2d rawGyroRotation = new Rotation2d();
+    private Rotation2d fieldGyroOffset = new Rotation2d();
     private final SwerveModulePosition[] lastModulePositions = // For delta tracking
             new SwerveModulePosition[] {
                 new SwerveModulePosition(),
@@ -160,7 +161,7 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
                 this::runVelocity,
                 new PPHolonomicDriveController(new PIDConstants(5.0, 0.0, 0.0), new PIDConstants(5.0, 0.0, 0.0)),
                 PP_CONFIG,
-                () -> DriverStation.getAlliance().orElse(Alliance.Blue) == Alliance.Red,
+                () -> Constants.getActiveAlliance() == Alliance.Red,
                 this);
         Pathfinding.setPathfinder(new LocalADStarAK());
         PathPlannerLogging.setLogActivePathCallback((activePath) -> {
@@ -398,9 +399,28 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
         return getPose().getRotation();
     }
 
+    /** Returns the current gyro heading in field coordinates without vision feedback. */
+    public Rotation2d getGyroBasedFieldRotation() {
+        return rawGyroRotation.plus(fieldGyroOffset);
+    }
+
+    /** Returns the current yaw rate used for vision integration. */
+    public double getGyroYawRateDegPerSec() {
+        return Math.toDegrees(
+                gyroInputs.connected
+                        ? gyroInputs.yawVelocityRadPerSec
+                        : getRobotRelativeSpeeds().omegaRadiansPerSecond);
+    }
+
+    /** Returns whether the hardware gyro is currently connected. */
+    public boolean isGyroConnected() {
+        return gyroInputs.connected;
+    }
+
     /** Resets the current odometry pose. */
     public void setPose(Pose2d pose) {
         resetSimulationPoseCallBack.accept(pose);
+        fieldGyroOffset = pose.getRotation().minus(rawGyroRotation);
         poseEstimator.resetPosition(rawGyroRotation, getModulePositions(), pose);
     }
 

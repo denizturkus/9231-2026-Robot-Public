@@ -123,15 +123,21 @@ public class RobotContainer {
                         drive,
                         new VisionIOLimelight(
                                 VisionConstants.camera0Name,
-                                drive::getRotation,
-                                () -> Math.toDegrees(drive.getRobotRelativeSpeeds().omegaRadiansPerSecond),
-                                () -> VisionConstants.robotToCamera0),
+                                drive::getGyroBasedFieldRotation,
+                                drive::getGyroYawRateDegPerSec,
+                                drive::isGyroConnected,
+                                () -> VisionConstants.robotToCamera0,
+                                VisionConstants.getSimpleTargetAllowedTagIds(VisionConstants.chassisCameraIndex),
+                                VisionConstants.isCameraMegaTag1Enabled(VisionConstants.chassisCameraIndex),
+                                VisionConstants.isCameraMegaTag2Enabled(VisionConstants.chassisCameraIndex)),
                         new VisionIOLimelight(
                                 VisionConstants.camera1Name,
-                                drive::getRotation,
-                                () -> Math.toDegrees(drive.getRobotRelativeSpeeds().omegaRadiansPerSecond),
+                                drive::getGyroBasedFieldRotation,
+                                drive::getGyroYawRateDegPerSec,
                                 () -> VisionConstants.getTurretCameraTransform(Rotation2d.fromDegrees(turret.getAngle())),
-                                VisionConstants.getSimpleTargetAllowedTagIds(VisionConstants.turretCameraIndex)));
+                                VisionConstants.getSimpleTargetAllowedTagIds(VisionConstants.turretCameraIndex),
+                                VisionConstants.isCameraMegaTag1Enabled(VisionConstants.turretCameraIndex),
+                                VisionConstants.isCameraMegaTag2Enabled(VisionConstants.turretCameraIndex)));
                 superstructure = new Superstructure(drive, intake, hopper, feeder, turret, flywheel, hood, vision);
 
                 break;
@@ -226,6 +232,7 @@ public class RobotContainer {
 
         m_allianceChooser.addDefaultOption("Red Alliance", Alliance.Red);
         m_allianceChooser.addOption("Blue Alliance", Alliance.Blue);
+        syncAllianceSelection();
 
         // Configure the button bindings
         configureButtonBindings();
@@ -259,6 +266,21 @@ public class RobotContainer {
         NamedCommands.registerCommand("TargetHub", superstructure.TargetHubCommand());
         NamedCommands.registerCommand("TargetAllianceSide", superstructure.TargetAllianceSideCommand());
         NamedCommands.registerCommand("CancelTargeting",superstructure.CancelTargetingCommand());
+    }
+
+    private void syncAllianceSelection() {
+        Alliance selectedAlliance = m_allianceChooser.get();
+        if (selectedAlliance != null) {
+            currentAlliance = selectedAlliance;
+        }
+    }
+
+    public void enabledInit() {
+        syncAllianceSelection();
+    }
+
+    public void disabledPeriodic() {
+        syncAllianceSelection();
     }
 
     /**
@@ -301,12 +323,12 @@ public class RobotContainer {
         operatorController.x().whileTrue(superstructure.ShootFuelCommand());
 
         operatorController.y().whileTrue(superstructure.ManualReverseHopperCommand());
-        operatorController.rightTrigger().whileTrue(superstructure.FlywheelTestCommand());
+
 
         
         // automated targeting
         operatorController.rightBumper().onTrue(superstructure.TargetHubCommand());
-        //operatorController.leftBumper().onTrue(superstructure.TargetAllianceSideCommand());
+        operatorController.leftBumper().onTrue(superstructure.TargetAllianceSideCommand());
         operatorController.leftTrigger().onTrue(superstructure.CancelTargetingCommand());
 
         // sets hood angles manually (degrees)
@@ -324,7 +346,7 @@ public class RobotContainer {
 
                 
        // operatorController.rightBumper().onTrue(superstructure.SetTurretAngleTestCommand());
-        operatorController.leftBumper().onTrue(superstructure.SetHoodAngleTestCommand()); 
+        //operatorController.leftBumper().onTrue(superstructure.SetHoodAngleTestCommand()); 
 
         // some music in case robot fails to motivate people
         musicController.leftStick().onTrue(Commands.runOnce(this::configureOrchestra).ignoringDisable(true));

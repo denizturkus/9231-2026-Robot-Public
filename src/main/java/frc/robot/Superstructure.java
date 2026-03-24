@@ -45,6 +45,7 @@ public class Superstructure extends SubsystemBase {
         STOWED, // intake arm is up and rollers are off
         STOWING, // intake arm is moving up, rollers are turning off
         DEPLOYING, // intake arm is moving down, rollers are turning on
+        DEPLOYED, // intake arm is down and rollers are off
         INTAKING, // intake arm is down and rollers are running to pick up balls
     }
 
@@ -94,7 +95,6 @@ public class Superstructure extends SubsystemBase {
     private boolean m_isHopperRunning = false;
     private boolean m_isShootFuelActive = false;
     private boolean m_isManualHopperReverseRequested = false;
-    private boolean m_hasActiveHopperJam = false;
     private ShotSolution m_latestShotSolution = null;
     private HopperMode m_hopperMode = HopperMode.STOPPED;
     private double kFlywheelOpenLoopVolts = flywheelOpenLoopVoltageSetpoint.get();
@@ -209,23 +209,63 @@ public class Superstructure extends SubsystemBase {
 
 
     public Command StartIntakingCommand() {
-        return Commands.parallel(
-                        Commands.runOnce(m_intake::openIntake),
-                        Commands.runOnce(m_intake::runIntakeRollers),
-                        Commands.runOnce(() -> m_IntakeState = IntakeState.DEPLOYING))
-                .andThen(Commands.waitUntil(m_intake::isArmNearSetpoint))
-                .andThen(Commands.runOnce(() -> m_IntakeState = IntakeState.INTAKING))
-                .onlyIf(() -> m_IntakeState == IntakeState.STOWED);
+        Command command =
+                Commands.either(
+                                Commands.sequence(
+                                        Commands.runOnce(m_intake::runIntakeRollers),
+                                        Commands.runOnce(() -> m_IntakeState = IntakeState.INTAKING)),
+                                Commands.parallel(
+                                                Commands.runOnce(m_intake::openIntake),
+                                                Commands.runOnce(m_intake::runIntakeRollers),
+                                                Commands.runOnce(() -> m_IntakeState = IntakeState.DEPLOYING))
+                                        .andThen(Commands.waitUntil(m_intake::isArmNearSetpoint))
+                                        .andThen(Commands.runOnce(() -> m_IntakeState = IntakeState.INTAKING)),
+                                () -> m_IntakeState == IntakeState.DEPLOYED)
+                        .onlyIf(
+                                () ->
+                                        m_IntakeState == IntakeState.STOWED
+                                                || m_IntakeState == IntakeState.DEPLOYED);
+        command.setName("StartIntaking");
+        return command;
+    }
+
+    public Command StopIntakeRollersCommand() {
+        Command command =
+                Commands.either(
+                                Commands.parallel(
+                                                Commands.runOnce(m_intake::stopRollers),
+                                                Commands.runOnce(this::stopHopperUnlessShooterIsDriving))
+                                        .andThen(Commands.waitUntil(m_intake::isArmNearSetpoint))
+                                        .andThen(Commands.runOnce(() -> m_IntakeState = IntakeState.DEPLOYED)),
+                                Commands.parallel(
+                                        Commands.runOnce(m_intake::stopRollers),
+                                        Commands.runOnce(this::stopHopperUnlessShooterIsDriving),
+                                        Commands.runOnce(() -> m_IntakeState = IntakeState.DEPLOYED)),
+                                () -> m_IntakeState == IntakeState.DEPLOYING)
+                        .onlyIf(
+                                () ->
+                                        m_IntakeState == IntakeState.DEPLOYING
+                                                || m_IntakeState == IntakeState.INTAKING);
+        command.setName("StopIntakeRollers");
+        return command;
     }
 
     public Command StopIntakingCommand() {
-        return Commands.parallel(
-                    Commands.runOnce(m_intake::stopRollers),
-                    Commands.runOnce(m_intake::closeIntake),
-                    Commands.runOnce(() -> m_IntakeState = IntakeState.STOWING))
-                .andThen(Commands.waitUntil(m_intake::isArmNearSetpoint))
-                .andThen(Commands.runOnce(() -> m_IntakeState = IntakeState.STOWED))
-                .onlyIf(() -> m_IntakeState == IntakeState.INTAKING);
+        Command command =
+                Commands.parallel(
+                                Commands.runOnce(m_intake::stopRollers),
+                                Commands.runOnce(this::stopHopperUnlessShooterIsDriving),
+                                Commands.runOnce(m_intake::closeIntake),
+                                Commands.runOnce(() -> m_IntakeState = IntakeState.STOWING))
+                        .andThen(Commands.waitUntil(m_intake::isArmNearSetpoint))
+                        .andThen(Commands.runOnce(() -> m_IntakeState = IntakeState.STOWED))
+                        .onlyIf(
+                                () ->
+                                        m_IntakeState == IntakeState.DEPLOYING
+                                                || m_IntakeState == IntakeState.DEPLOYED
+                                                || m_IntakeState == IntakeState.INTAKING);
+        command.setName("StopIntaking");
+        return command;
     }
 
     public Command ShootFuelCommand() {
@@ -261,9 +301,7 @@ public class Superstructure extends SubsystemBase {
                     m_TargetingState = TargetingState.NONE;
                     m_latestShotSolution = null;
                     m_ShooterState = ShooterState.IDLE;
-                    if (m_IntakeState == IntakeState.STOWED) {
-                        stopHopperIfShooterOwnsIt();
-                    }
+                    stopHopperIfIntakeIsIdle();
                 },
                 m_turret,
                 m_hood,
@@ -326,7 +364,7 @@ public class Superstructure extends SubsystemBase {
         if (m_TargetingState == TargetingState.NONE || m_latestShotSolution == null) {
             m_flywheel.stop();
             stopFeeder();
-            stopHopperIfShooterOwnsIt();
+            stopHopperIfIntakeIsIdle();
             m_ShooterState =
                     m_TargetingState == TargetingState.NONE ? ShooterState.IDLE : ShooterState.LOADING;
             return;
@@ -346,7 +384,7 @@ public class Superstructure extends SubsystemBase {
         }
 
         stopFeeder();
-        stopHopperIfShooterOwnsIt();
+        stopHopperIfIntakeIsIdle();
         m_ShooterState = ShooterState.LOADING;
     }
 
@@ -368,8 +406,15 @@ public class Superstructure extends SubsystemBase {
         m_isFeeding = false;
     }
 
-    private void stopHopperIfShooterOwnsIt() {
-        if (m_IntakeState == IntakeState.STOWED && !isIntakeDrivingHopper()) {
+    private void stopHopperIfIntakeIsIdle() {
+        if (!isIntakeDrivingHopper()) {
+            clearAutomaticHopperJamRecovery();
+            setHopperMode(HopperMode.STOPPED);
+        }
+    }
+
+    private void stopHopperUnlessShooterIsDriving() {
+        if (!isShooterDrivingHopper()) {
             clearAutomaticHopperJamRecovery();
             setHopperMode(HopperMode.STOPPED);
         }
@@ -379,7 +424,7 @@ public class Superstructure extends SubsystemBase {
         m_isShootFuelActive = false;
         m_flywheel.stop();
         stopFeeder();
-        stopHopperIfShooterOwnsIt();
+        stopHopperIfIntakeIsIdle();
         m_ShooterState =
                 m_TargetingState == TargetingState.NONE ? ShooterState.IDLE : ShooterState.LOADING;
     }
@@ -608,6 +653,7 @@ public class Superstructure extends SubsystemBase {
     private String colorForIntakeState() {
         return switch (m_IntakeState) {
             case INTAKING -> "#40C057";
+            case DEPLOYED -> "#15AABF";
             case DEPLOYING, STOWING -> "#FFA94D";
             case STOWED -> "#495057";
         };
@@ -641,8 +687,11 @@ public class Superstructure extends SubsystemBase {
         if (m_IntakeState == IntakeState.INTAKING) {
             return "#20C997";
         }
-        return "#495057";
+        if (m_IntakeState == IntakeState.DEPLOYED) {
+            return "#15AABF";
         }
+        return "#495057";
+    }
 
     private boolean isIntakeDrivingHopper() {
         return m_intake.areRollersRunning();
@@ -658,12 +707,10 @@ public class Superstructure extends SubsystemBase {
 
         if (!shouldFeedForward) {
             clearAutomaticHopperJamRecovery();
-            m_hasActiveHopperJam = false;
-        } else if (hopperLikelyJammed && !m_hasActiveHopperJam && !m_isManualHopperReverseRequested) {
+        } else if (hopperLikelyJammed
+                && !isAutomaticHopperJamRecoveryActive()
+                && !m_isManualHopperReverseRequested) {
             requestAutomaticHopperJamRecovery();
-            m_hasActiveHopperJam = true;
-        } else if (!hopperLikelyJammed) {
-            m_hasActiveHopperJam = false;
         }
 
         if (m_isManualHopperReverseRequested) {

@@ -7,7 +7,6 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
-import edu.wpi.first.wpilibj.DriverStation;
 import frc.robot.Constants;
 
 public class VisionConstants {
@@ -53,6 +52,17 @@ public class VisionConstants {
         false // Turret camera
     };
 
+    // Pose solvers enabled for each camera.
+    // The chassis camera should feed odometry from MegaTag 2 only.
+    public static boolean[] cameraMegaTag1Enabled = new boolean[] {
+        false, // Chassis camera
+        false // Turret camera
+    };
+    public static boolean[] cameraMegaTag2Enabled = new boolean[] {
+        true, // Chassis camera
+        false // Turret camera
+    };
+
     // TODO: Retune global vision trust baselines after validating pose error
     // Standard deviation baselines, for 1 meter distance and 1 tag
     // (Adjusted automatically based on distance and # of tags)
@@ -74,7 +84,8 @@ public class VisionConstants {
     // TODO: Revisit MegaTag 2 scaling 
     // Multipliers to apply for MegaTag 2 observations
     public static double linearStdDevMegatag2Factor = 0.5; // More stable than full 3D solve
-    public static double angularStdDevMegatag2Factor = Double.POSITIVE_INFINITY; // No rotation data available
+    public static double angularStdDevMegatag2Factor = 1.0e6; // Effectively ignore MT2 yaw without using Infinity
+    public static double maxMegaTag2YawRateDegPerSec = 720.0;
 
     public static double getCameraMaxAmbiguity(int cameraIndex) {
         return getCameraValue(cameraMaxAmbiguities, cameraIndex, maxAmbiguity);
@@ -96,6 +107,14 @@ public class VisionConstants {
         return getCameraValue(cameraPoseEstimationEnabled, cameraIndex, true);
     }
 
+    public static boolean isCameraMegaTag1Enabled(int cameraIndex) {
+        return getCameraValue(cameraMegaTag1Enabled, cameraIndex, true);
+    }
+
+    public static boolean isCameraMegaTag2Enabled(int cameraIndex) {
+        return getCameraValue(cameraMegaTag2Enabled, cameraIndex, true);
+    }
+
     public static int[] getSimpleTargetAllowedTagIds(int cameraIndex) {
         return switch (cameraIndex) {
             case turretCameraIndex -> new int[] {10, 26};
@@ -103,8 +122,16 @@ public class VisionConstants {
         };
     }
 
+    public static String getCameraName(int cameraIndex) {
+        return switch (cameraIndex) {
+            case chassisCameraIndex -> camera0Name;
+            case turretCameraIndex -> camera1Name;
+            default -> "";
+        };
+    }
+
     public static boolean isAllianceHubTargetTag(int tagId) {
-        return switch (DriverStation.getAlliance().orElse(DriverStation.Alliance.Blue)) {
+        return switch (Constants.getActiveAlliance()) {
             case Blue -> tagId == 26;
             case Red -> tagId == 10;
         };

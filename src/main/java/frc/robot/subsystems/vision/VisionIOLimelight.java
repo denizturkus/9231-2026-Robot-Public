@@ -29,6 +29,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 
@@ -37,6 +38,7 @@ public class VisionIOLimelight implements VisionIO {
     private final String name;
     private final Supplier<Rotation2d> robotRotationSupplier;
     private final DoubleSupplier robotYawRateSupplierDegPerSec;
+    private final BooleanSupplier robotOrientationTrustedSupplier;
     private final Supplier<Transform3d> robotToCameraSupplier;
 
     private final DoubleSubscriber latencySubscriber;
@@ -49,6 +51,8 @@ public class VisionIOLimelight implements VisionIO {
     private final DoubleArraySubscriber megatag1Subscriber;
     private final DoubleArraySubscriber megatag2Subscriber;
     private final int[] simpleTargetAllowedTagIds;
+    private final boolean enableMegaTag1;
+    private final boolean enableMegaTag2;
     private final Set<Integer> simpleTargetAllowedTagIdSet = new HashSet<>();
     private boolean simpleTargetFilterConfigured = false;
 
@@ -63,7 +67,7 @@ public class VisionIOLimelight implements VisionIO {
             String name,
             Supplier<Rotation2d> robotRotationSupplier,
             Supplier<Transform3d> robotToCameraSupplier) {
-        this(name, robotRotationSupplier, () -> 0.0, robotToCameraSupplier, new int[0]);
+        this(name, robotRotationSupplier, () -> 0.0, () -> true, robotToCameraSupplier, new int[0], true, true);
     }
 
     /**
@@ -79,7 +83,15 @@ public class VisionIOLimelight implements VisionIO {
             Supplier<Rotation2d> robotRotationSupplier,
             DoubleSupplier robotYawRateSupplierDegPerSec,
             Supplier<Transform3d> robotToCameraSupplier) {
-        this(name, robotRotationSupplier, robotYawRateSupplierDegPerSec, robotToCameraSupplier, new int[0]);
+        this(
+                name,
+                robotRotationSupplier,
+                robotYawRateSupplierDegPerSec,
+                () -> true,
+                robotToCameraSupplier,
+                new int[0],
+                true,
+                true);
     }
 
     /**
@@ -97,11 +109,84 @@ public class VisionIOLimelight implements VisionIO {
             DoubleSupplier robotYawRateSupplierDegPerSec,
             Supplier<Transform3d> robotToCameraSupplier,
             int[] simpleTargetAllowedTagIds) {
+        this(
+                name,
+                robotRotationSupplier,
+                robotYawRateSupplierDegPerSec,
+                () -> true,
+                robotToCameraSupplier,
+                simpleTargetAllowedTagIds,
+                true,
+                true);
+    }
+
+    public VisionIOLimelight(
+            String name,
+            Supplier<Rotation2d> robotRotationSupplier,
+            DoubleSupplier robotYawRateSupplierDegPerSec,
+            BooleanSupplier robotOrientationTrustedSupplier,
+            Supplier<Transform3d> robotToCameraSupplier,
+            int[] simpleTargetAllowedTagIds) {
+        this(
+                name,
+                robotRotationSupplier,
+                robotYawRateSupplierDegPerSec,
+                robotOrientationTrustedSupplier,
+                robotToCameraSupplier,
+                simpleTargetAllowedTagIds,
+                true,
+                true);
+    }
+
+    public VisionIOLimelight(
+            String name,
+            Supplier<Rotation2d> robotRotationSupplier,
+            DoubleSupplier robotYawRateSupplierDegPerSec,
+            Supplier<Transform3d> robotToCameraSupplier,
+            int[] simpleTargetAllowedTagIds,
+            boolean enableMegaTag1,
+            boolean enableMegaTag2) {
+        this(
+                name,
+                robotRotationSupplier,
+                robotYawRateSupplierDegPerSec,
+                () -> true,
+                robotToCameraSupplier,
+                simpleTargetAllowedTagIds,
+                enableMegaTag1,
+                enableMegaTag2);
+    }
+
+    /**
+     * Creates a new VisionIOLimelight.
+     *
+     * @param name The configured name of the Limelight.
+     * @param robotRotationSupplier Supplier for the current estimated robot rotation, used for MegaTag 2.
+     * @param robotYawRateSupplierDegPerSec Supplier for the current robot yaw rate in degrees/sec.
+     * @param robotOrientationTrustedSupplier Supplier for whether the orientation source is valid for MegaTag 2.
+     * @param robotToCameraSupplier Supplier for the current camera transform relative to the robot.
+     * @param simpleTargetAllowedTagIds Allowed AprilTag IDs for simple target tracking. Empty allows all IDs.
+     * @param enableMegaTag1 Whether MegaTag 1 observations should be read.
+     * @param enableMegaTag2 Whether MegaTag 2 observations should be read.
+     */
+    public VisionIOLimelight(
+            String name,
+            Supplier<Rotation2d> robotRotationSupplier,
+            DoubleSupplier robotYawRateSupplierDegPerSec,
+            BooleanSupplier robotOrientationTrustedSupplier,
+            Supplier<Transform3d> robotToCameraSupplier,
+            int[] simpleTargetAllowedTagIds,
+            boolean enableMegaTag1,
+            boolean enableMegaTag2) {
         this.name = Objects.requireNonNull(name, "name");
         this.robotRotationSupplier = Objects.requireNonNull(robotRotationSupplier, "robotRotationSupplier");
         this.robotYawRateSupplierDegPerSec =
                 Objects.requireNonNull(robotYawRateSupplierDegPerSec, "robotYawRateSupplierDegPerSec");
+        this.robotOrientationTrustedSupplier =
+                Objects.requireNonNull(robotOrientationTrustedSupplier, "robotOrientationTrustedSupplier");
         this.robotToCameraSupplier = Objects.requireNonNull(robotToCameraSupplier, "robotToCameraSupplier");
+        this.enableMegaTag1 = enableMegaTag1;
+        this.enableMegaTag2 = enableMegaTag2;
         this.simpleTargetAllowedTagIds =
                 Arrays.copyOf(
                         Objects.requireNonNull(simpleTargetAllowedTagIds, "simpleTargetAllowedTagIds"),
@@ -174,14 +259,17 @@ public class VisionIOLimelight implements VisionIO {
                 Units.radiansToDegrees(cameraRotation.getX()),
                 Units.radiansToDegrees(cameraRotation.getY()),
                 Units.radiansToDegrees(cameraRotation.getZ()));
+        double robotYawRateDegPerSec = robotYawRateSupplierDegPerSec.getAsDouble();
         LimelightHelpers.SetRobotOrientation_NoFlush(
-                name, robotRotationSupplier.get().getDegrees(), robotYawRateSupplierDegPerSec.getAsDouble(), 0.0, 0.0, 0.0, 0.0);
+                name, robotRotationSupplier.get().getDegrees(), robotYawRateDegPerSec, 0.0, 0.0, 0.0, 0.0);
         LimelightHelpers.Flush();
+        boolean rejectMegaTag2ForUntrustedOrientation = !robotOrientationTrustedSupplier.getAsBoolean();
 
         // Read new pose observations from NetworkTables
         Set<Integer> tagIds = new HashSet<>();
         List<PoseObservation> poseObservations = new LinkedList<>();
         for (var rawSample : megatag1Subscriber.readQueue()) {
+            if (!enableMegaTag1) continue;
             if (rawSample.value.length == 0) continue;
             for (int i = 11; i < rawSample.value.length; i += 7) {
                 tagIds.add((int) rawSample.value[i]);
@@ -194,7 +282,9 @@ public class VisionIOLimelight implements VisionIO {
                     rawSample.value[9],
                     PoseObservationType.MEGATAG_1));
         }
+        boolean rejectMegaTag2ForYawRate = Math.abs(robotYawRateDegPerSec) > VisionConstants.maxMegaTag2YawRateDegPerSec;
         for (var rawSample : megatag2Subscriber.readQueue()) {
+            if (!enableMegaTag2 || rejectMegaTag2ForYawRate || rejectMegaTag2ForUntrustedOrientation) continue;
             if (rawSample.value.length == 0) continue;
             for (int i = 11; i < rawSample.value.length; i += 7) {
                 tagIds.add((int) rawSample.value[i]);
@@ -239,4 +329,5 @@ public class VisionIOLimelight implements VisionIO {
                         Units.degreesToRadians(rawLLArray[4]),
                         Units.degreesToRadians(rawLLArray[5])));
     }
+
 }

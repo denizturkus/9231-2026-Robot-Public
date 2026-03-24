@@ -628,7 +628,7 @@ public class ShootOnTheMoveCommand extends Command {
       return Double.NaN;
     }
 
-    String cameraName = "limelight-turret";
+    String cameraName = VisionConstants.getCameraName(turretVisionCameraIndex);
     var tagPose = VisionConstants.aprilTagLayout.getTagPose(targetTagId);
     if (cameraName.isEmpty() || tagPose.isEmpty()) {
       return Double.NaN;
