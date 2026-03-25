@@ -249,13 +249,15 @@ public class ShootOnTheMoveCommand extends Command {
   }
 
   @Override
-  public void execute() {
+  public void execute() { 
     recordTurretAngleSample(Timer.getFPGATimestamp(), turret.getAngle());
 
     Translation2d target =
         switch (targetingMode) {
           case HUB -> AimPoints.getAllianceHubPosition().toTranslation2d();
-          case ALLIANCE_SIDE -> AimPoints.getAllianceFarSidePosition().toTranslation2d();
+          case ALLIANCE_SIDE ->
+              AimPoints.getAllianceSideTargetPosition(drive.getPose().getTranslation())
+                  .toTranslation2d();
         };
 
     if (target == null) {

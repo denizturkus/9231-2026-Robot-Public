@@ -631,7 +631,9 @@ public class Superstructure extends SubsystemBase {
     private Translation3d getRequestedTargetTranslation3d() {
         return switch (m_TargetingState) {
             case HUB -> Constants.GenericConstants.AimPoints.getAllianceHubPosition();
-            case ALLIANCE -> Constants.GenericConstants.AimPoints.getAllianceFarSidePosition();
+            case ALLIANCE ->
+                    Constants.GenericConstants.AimPoints.getAllianceSideTargetPosition(
+                            m_drive.getPose().getTranslation());
             case NONE -> null;
         };
     }

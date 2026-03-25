@@ -174,6 +174,20 @@ public final class Constants {
 				? RED_FAR_SIDE.value
 				: BLUE_FAR_SIDE.value;
 			}
+
+			public static final Translation3d getAllianceSideTargetPosition(
+					Translation2d currentRobotPosition) {
+				Translation3d outpost = getAllianceOutpostPosition();
+				Translation3d farSide = getAllianceFarSidePosition();
+				if (currentRobotPosition == null) {
+					return outpost;
+				}
+
+				return currentRobotPosition.getDistance(outpost.toTranslation2d())
+								<= currentRobotPosition.getDistance(farSide.toTranslation2d())
+						? outpost
+						: farSide;
+			}
 		}
 		}
 
