@@ -269,6 +269,7 @@ public class RobotContainer {
         NamedCommands.registerCommand("StopIntaking", superstructure.StopIntakingCommand());
         NamedCommands.registerCommand("ShootFuel", superstructure.ShootFuelCommand());
         NamedCommands.registerCommand("TargetHub", superstructure.TargetHubCommand());
+        NamedCommands.registerCommand("StationaryHubShootAuto", superstructure.StationaryHubShootAutoCommand());
         NamedCommands.registerCommand("TargetAllianceSide", superstructure.TargetAllianceSideCommand());
         NamedCommands.registerCommand("CancelTargeting",superstructure.CancelTargetingCommand());
     }

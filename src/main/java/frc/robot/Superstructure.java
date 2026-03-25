@@ -37,6 +37,7 @@ public class Superstructure extends SubsystemBase {
     private static final double kMovingLinearThresholdMetersPerSec = 0.05;
     private static final double kMovingAngularThresholdRadPerSec = 0.10;
     private static final double kHopperJamClearSeconds = 0.35;
+    private static final double kStationaryHubShootAutoDurationSeconds = 5.0;
     private static final Pose2d[] kEmptyPoses2d = new Pose2d[0];
     private static final Pose3d[] kEmptyPoses3d = new Pose3d[0];
 
@@ -301,6 +302,20 @@ public class Superstructure extends SubsystemBase {
                 })
                 .finallyDo((interrupted) -> endShootFuel());
         command.setName("ShootFuel");
+        return command;
+    }
+
+    public Command StationaryHubShootAutoCommand() {
+        Command command =
+                Commands.sequence(
+                        Commands.runOnce(m_drive::stopWithX, m_drive),
+                        Commands.deadline(
+                                Commands.waitSeconds(kStationaryHubShootAutoDurationSeconds),
+                                TargetHubCommand(),
+                                ShootFuelCommand()),
+                        Commands.runOnce(m_drive::stopWithX, m_drive),
+                        CancelTargetingCommand());
+        command.setName("StationaryHubShootAuto");
         return command;
     }
 

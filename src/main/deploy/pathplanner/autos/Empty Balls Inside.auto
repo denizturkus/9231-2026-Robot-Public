@@ -7,19 +7,13 @@
         {
           "type": "path",
           "data": {
-            "pathName": "New Path"
+            "pathName": "still"
           }
         },
         {
           "type": "named",
           "data": {
-            "name": "TargetHub"
-          }
-        },
-        {
-          "type": "named",
-          "data": {
-            "name": "ShootFuel"
+            "name": "StationaryHubShootAuto"
           }
         }
       ]

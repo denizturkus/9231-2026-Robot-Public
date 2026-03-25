@@ -57,10 +57,8 @@ public final class Constants {
 		// TODO: INTERPOLASYON TABLOSUU
 		public static final double[][] kHoodAngleDegreesTable =
 				new double[][] {
-					{2.5,30},
-					{3, 32},
-					{3.5, 36},
-					{4, 37}
+					{1.2, 12},
+					{1.5, 17}
 				};
 
 		public static final InterpolatingDoubleTreeMap kHoodAngleDegrees =
@@ -70,7 +68,7 @@ public final class Constants {
 				new double[][] {
 					//{2.5, 4300},
 					//{3, 4300},
-					{3.5, 3500}
+					{3.5, 4000}
 					//{4, 4800}
 				};
 
