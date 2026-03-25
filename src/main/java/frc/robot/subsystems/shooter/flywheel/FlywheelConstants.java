@@ -9,7 +9,7 @@ public final class FlywheelConstants {
     public static final String kMotorCANBus = ""; // Main RIO CAN bus
 
     // Mechanism velocity is reported directly in flywheel units through SensorToMechanismRatio.
-    public static final double kGearboxReduction = 15.0 / 33.0;
+    public static final double kGearboxReduction = 28.0 / 20.0;
 
     // Phoenix closed-loop gains in volts per RPM and volts per RPM/sec.
     // Start with P-only when SysId feedforward is trustworthy, then add I only if a true bias remains.

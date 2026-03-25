@@ -1,13 +1,17 @@
 package frc.robot;
 
 import static frc.robot.subsystems.vision.VisionConstants.turretCameraIndex;
+import static frc.robot.subsystems.intake.IntakeConstants.kArmClosedAngle;
+import static frc.robot.subsystems.intake.IntakeConstants.kArmOpenedAngle;
 
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -43,8 +47,8 @@ public class Superstructure extends SubsystemBase {
 
     public enum IntakeState {
         STOWED, // intake arm is up and rollers are off
-        STOWING, // intake arm is moving up, rollers are turning off
-        DEPLOYING, // intake arm is moving down, rollers are turning on
+        STOWING, // intake arm is moving up
+        DEPLOYING, // intake arm is moving down
         DEPLOYED, // intake arm is down and rollers are off
         INTAKING, // intake arm is down and rollers are running to pick up balls
     }
@@ -67,6 +71,13 @@ public class Superstructure extends SubsystemBase {
         FEEDING,
         JAM_CLEARING,
         MANUAL_REVERSE
+    }
+
+    private enum IntakeArmState {
+        STOWED,
+        STOWING,
+        DEPLOYING,
+        DEPLOYED
     }
 
     public MotionState m_MotionState = MotionState.STATIONARY;
@@ -95,8 +106,12 @@ public class Superstructure extends SubsystemBase {
     private boolean m_isHopperRunning = false;
     private boolean m_isShootFuelActive = false;
     private boolean m_isManualHopperReverseRequested = false;
+    private boolean m_isIntakeRollerRequestActive = false;
+    private boolean m_isManualHoodOverrideActive = false;
     private ShotSolution m_latestShotSolution = null;
     private HopperMode m_hopperMode = HopperMode.STOPPED;
+    private IntakeArmState m_intakeArmState = IntakeArmState.STOWED;
+    private double m_manualHoodOverrideDeg = Double.NaN;
     private double kFlywheelOpenLoopVolts = flywheelOpenLoopVoltageSetpoint.get();
     private double kFlywheelTestRPM = flywheelTestRPMSetpoint.get();
     private double kHoodAngleTestDegree = hoodTestAngleSetpoint.get();
@@ -134,6 +149,11 @@ public class Superstructure extends SubsystemBase {
 
     @Override
     public void periodic() {
+        if (DriverStation.isDisabled() && m_isIntakeRollerRequestActive) {
+            setIntakeRollerRequestActive(false);
+        }
+
+        syncIntakeArmStateToMechanism();
 
         kFlywheelOpenLoopVolts = flywheelOpenLoopVoltageSetpoint.get();
         kFlywheelTestRPM = flywheelTestRPMSetpoint.get();
@@ -157,10 +177,14 @@ public class Superstructure extends SubsystemBase {
         boolean intakeDrivingHopper = isIntakeDrivingHopper();
         boolean shooterDrivingHopper = isShooterDrivingHopper();
 
+        updateIntakeState();
         updateHopperControl(intakeDrivingHopper, shooterDrivingHopper);
 
         Logger.recordOutput("Superstructure/MotionState", m_MotionState);
         Logger.recordOutput("Superstructure/IntakeState", m_IntakeState);
+        Logger.recordOutput("Superstructure/IntakeArmState", m_intakeArmState.name());
+        Logger.recordOutput("Superstructure/IntakeRollersRequested", m_isIntakeRollerRequestActive);
+        Logger.recordOutput("Superstructure/IntakeRollersRunning", m_intake.areRollersRunning());
         Logger.recordOutput("Superstructure/ShooterState", m_ShooterState);
         Logger.recordOutput("Superstructure/TargetingState", m_TargetingState);
         Logger.recordOutput("Superstructure/IsFeeding", m_isFeeding);
@@ -203,67 +227,66 @@ public class Superstructure extends SubsystemBase {
         Logger.recordOutput("Superstructure/TargetingManualShotEnabled", isTargetingManualShotEnabled());
         Logger.recordOutput("Superstructure/TargetingManualHoodAngleDeg", kHoodAngleTestDegree);
         Logger.recordOutput("Superstructure/TargetingManualFlywheelRpm", kFlywheelTestRPM);
+        Logger.recordOutput("Superstructure/ManualHoodOverrideActive", m_isManualHoodOverrideActive);
+        Logger.recordOutput("Superstructure/ManualHoodOverrideDeg", m_manualHoodOverrideDeg);
 
         updateShotField();
     }
 
 
-    public Command StartIntakingCommand() {
+    public Command ExtendIntakeArmCommand() {
         Command command =
-                Commands.either(
-                                Commands.sequence(
-                                        Commands.runOnce(m_intake::runIntakeRollers),
-                                        Commands.runOnce(() -> m_IntakeState = IntakeState.INTAKING)),
-                                Commands.parallel(
-                                                Commands.runOnce(m_intake::openIntake),
-                                                Commands.runOnce(m_intake::runIntakeRollers),
-                                                Commands.runOnce(() -> m_IntakeState = IntakeState.DEPLOYING))
-                                        .andThen(Commands.waitUntil(m_intake::isArmNearSetpoint))
-                                        .andThen(Commands.runOnce(() -> m_IntakeState = IntakeState.INTAKING)),
-                                () -> m_IntakeState == IntakeState.DEPLOYED)
-                        .onlyIf(
-                                () ->
-                                        m_IntakeState == IntakeState.STOWED
-                                                || m_IntakeState == IntakeState.DEPLOYED);
+                Commands.sequence(
+                                Commands.runOnce(m_intake::openIntake, m_intake),
+                                Commands.runOnce(() -> setIntakeArmState(IntakeArmState.DEPLOYING)),
+                                Commands.waitUntil(m_intake::isArmNearSetpoint),
+                                Commands.runOnce(() -> setIntakeArmState(IntakeArmState.DEPLOYED)))
+                        .onlyIf(this::isIntakeArmRetracted);
+        command.setName("ExtendIntakeArm");
+        return command;
+    }
+
+    public Command RunIntakeRollersCommand() {
+        Command command =
+                Commands.sequence(
+                                Commands.runOnce(m_intake::runIntakeRollers, m_intake),
+                                Commands.runOnce(() -> setIntakeRollerRequestActive(true)))
+                        .onlyIf(() -> !m_isIntakeRollerRequestActive);
+        command.setName("RunIntakeRollers");
+        return command;
+    }
+
+    public Command StartIntakingCommand() {
+        Command command = Commands.sequence(ExtendIntakeArmCommand(), RunIntakeRollersCommand());
         command.setName("StartIntaking");
         return command;
     }
 
     public Command StopIntakeRollersCommand() {
         Command command =
-                Commands.either(
-                                Commands.parallel(
-                                                Commands.runOnce(m_intake::stopRollers),
-                                                Commands.runOnce(this::stopHopperUnlessShooterIsDriving))
-                                        .andThen(Commands.waitUntil(m_intake::isArmNearSetpoint))
-                                        .andThen(Commands.runOnce(() -> m_IntakeState = IntakeState.DEPLOYED)),
-                                Commands.parallel(
-                                        Commands.runOnce(m_intake::stopRollers),
+                Commands.sequence(
+                                        Commands.runOnce(m_intake::stopRollers, m_intake),
                                         Commands.runOnce(this::stopHopperUnlessShooterIsDriving),
-                                        Commands.runOnce(() -> m_IntakeState = IntakeState.DEPLOYED)),
-                                () -> m_IntakeState == IntakeState.DEPLOYING)
-                        .onlyIf(
-                                () ->
-                                        m_IntakeState == IntakeState.DEPLOYING
-                                                || m_IntakeState == IntakeState.INTAKING);
+                                        Commands.runOnce(() -> setIntakeRollerRequestActive(false)))
+                        .onlyIf(() -> m_isIntakeRollerRequestActive);
         command.setName("StopIntakeRollers");
         return command;
     }
 
-    public Command StopIntakingCommand() {
+    public Command RetractIntakeArmCommand() {
         Command command =
-                Commands.parallel(
-                                Commands.runOnce(m_intake::stopRollers),
-                                Commands.runOnce(this::stopHopperUnlessShooterIsDriving),
-                                Commands.runOnce(m_intake::closeIntake),
-                                Commands.runOnce(() -> m_IntakeState = IntakeState.STOWING))
-                        .andThen(Commands.waitUntil(m_intake::isArmNearSetpoint))
-                        .andThen(Commands.runOnce(() -> m_IntakeState = IntakeState.STOWED))
-                        .onlyIf(
-                                () ->
-                                        m_IntakeState == IntakeState.DEPLOYING
-                                                || m_IntakeState == IntakeState.DEPLOYED
-                                                || m_IntakeState == IntakeState.INTAKING);
+                Commands.sequence(
+                                Commands.runOnce(m_intake::closeIntake, m_intake),
+                                Commands.runOnce(() -> setIntakeArmState(IntakeArmState.STOWING)),
+                                Commands.waitUntil(m_intake::isArmNearSetpoint),
+                                Commands.runOnce(() -> setIntakeArmState(IntakeArmState.STOWED)))
+                        .onlyIf(() -> isIntakeArmExtended() && !m_isIntakeRollerRequestActive);
+        command.setName("RetractIntakeArm");
+        return command;
+    }
+
+    public Command StopIntakingCommand() {
+        Command command = Commands.sequence(StopIntakeRollersCommand(), RetractIntakeArmCommand());
         command.setName("StopIntaking");
         return command;
     }
@@ -323,10 +346,12 @@ public class Superstructure extends SubsystemBase {
                                 turretCameraIndex,
                                 this::setLatestShotSolution,
                                 this::isTargetingManualShotEnabled,
-                                hoodTestAngleSetpoint::get,
+                                this::isManualHoodOverrideActive,
+                                this::getRequestedTargetingHoodAngleDeg,
                                 flywheelTestRPMSetpoint::get),
                         Commands.run(() -> updateShootOnTheMoveState(targetingState)))
                 .beforeStarting(() -> {
+                    clearManualHoodOverride();
                     m_TargetingState = targetingState;
                     m_latestShotSolution = null;
                     m_ShooterState = ShooterState.LOADING;
@@ -354,6 +379,25 @@ public class Superstructure extends SubsystemBase {
 
     private boolean isTargetingManualShotEnabled() {
         return targetingManualShotEnabledSetpoint.get() > 0.5;
+    }
+
+    private boolean isManualHoodOverrideActive() {
+        return m_isManualHoodOverrideActive;
+    }
+
+    private double getRequestedTargetingHoodAngleDeg() {
+        return m_isManualHoodOverrideActive ? m_manualHoodOverrideDeg : hoodTestAngleSetpoint.get();
+    }
+
+    private void clearManualHoodOverride() {
+        m_isManualHoodOverrideActive = false;
+        m_manualHoodOverrideDeg = Double.NaN;
+    }
+
+    private void setManualHoodOverride(double hoodAngleDeg) {
+        m_isManualHoodOverrideActive = true;
+        m_manualHoodOverrideDeg = hoodAngleDeg;
+        m_hood.setHoodAngle(hoodAngleDeg);
     }
 
     private void setLatestShotSolution(ShotSolution shotSolution) {
@@ -473,28 +517,28 @@ public class Superstructure extends SubsystemBase {
     }
 
     public Command HoodManual8DegsCommand() {
-        return Commands.runOnce(() -> m_hood.setHoodAngle(8));
+        return Commands.runOnce(() -> setManualHoodOverride(8));
     }
     public Command HoodManual12DegsCommand() {
-        return Commands.runOnce(() -> m_hood.setHoodAngle(12));
+        return Commands.runOnce(() -> setManualHoodOverride(12));
     }
     public Command HoodManual16DegsCommand() {
-        return Commands.runOnce(() -> m_hood.setHoodAngle(16));
+        return Commands.runOnce(() -> setManualHoodOverride(16));
     }
     public Command HoodManual20DegsCommand() {
-        return Commands.runOnce(() -> m_hood.setHoodAngle(20));
+        return Commands.runOnce(() -> setManualHoodOverride(20));
     }
     public Command HoodManual24DegsCommand() {
-        return Commands.runOnce(() -> m_hood.setHoodAngle(24));
+        return Commands.runOnce(() -> setManualHoodOverride(24));
     }
     public Command HoodManual28DegsCommand() {
-        return Commands.runOnce(() -> m_hood.setHoodAngle(28));
+        return Commands.runOnce(() -> setManualHoodOverride(28));
     }
     public Command HoodManual32DegsCommand() {
-        return Commands.runOnce(() -> m_hood.setHoodAngle(32));
+        return Commands.runOnce(() -> setManualHoodOverride(32));
     }
     public Command HoodManual36DegsCommand() {
-        return Commands.runOnce(() -> m_hood.setHoodAngle(36));
+        return Commands.runOnce(() -> setManualHoodOverride(36));
     }
 
     public Command SetHoodAngleTestCommand() {
@@ -693,12 +737,63 @@ public class Superstructure extends SubsystemBase {
         return "#495057";
     }
 
+    private void setIntakeArmState(IntakeArmState intakeArmState) {
+        m_intakeArmState = intakeArmState;
+        updateIntakeState();
+    }
+
+    private void setIntakeRollerRequestActive(boolean intakeRollerRequestActive) {
+        m_isIntakeRollerRequestActive = intakeRollerRequestActive;
+        updateIntakeState();
+    }
+
+    private void syncIntakeArmStateToMechanism() {
+        if (m_intake.isArmNearAngle(kArmOpenedAngle)) {
+            m_intakeArmState = IntakeArmState.DEPLOYED;
+            return;
+        }
+
+        if (m_intake.isArmNearAngle(kArmClosedAngle)) {
+            m_intakeArmState = IntakeArmState.STOWED;
+            return;
+        }
+
+        double latestSetpoint = m_intake.getLatestArmSetpoint();
+        if (isNearAngle(latestSetpoint, kArmOpenedAngle, 0.1)) {
+            m_intakeArmState = IntakeArmState.DEPLOYING;
+        } else if (isNearAngle(latestSetpoint, kArmClosedAngle, 0.1)) {
+            m_intakeArmState = IntakeArmState.STOWING;
+        }
+    }
+
+    private void updateIntakeState() {
+        m_IntakeState =
+                switch (m_intakeArmState) {
+                    case STOWED -> IntakeState.STOWED;
+                    case STOWING -> IntakeState.STOWING;
+                    case DEPLOYING -> IntakeState.DEPLOYING;
+                    case DEPLOYED -> m_isIntakeRollerRequestActive ? IntakeState.INTAKING : IntakeState.DEPLOYED;
+                };
+    }
+
+    private boolean isIntakeArmRetracted() {
+        return m_intakeArmState == IntakeArmState.STOWED || m_intakeArmState == IntakeArmState.STOWING;
+    }
+
+    private boolean isIntakeArmExtended() {
+        return m_intakeArmState == IntakeArmState.DEPLOYING || m_intakeArmState == IntakeArmState.DEPLOYED;
+    }
+
     private boolean isIntakeDrivingHopper() {
-        return m_intake.areRollersRunning();
+        return m_isIntakeRollerRequestActive && !DriverStation.isDisabled();
     }
 
     private boolean isShooterDrivingHopper() {
         return m_feeder.isFeedingForward() && m_flywheel.isRunning();
+    }
+
+    private static boolean isNearAngle(double angleA, double angleB, double toleranceDeg) {
+        return Math.abs(MathUtil.inputModulus(angleA - angleB, -180, 180)) <= toleranceDeg;
     }
 
     private void updateHopperControl(boolean intakeDrivingHopper, boolean shooterDrivingHopper) {

@@ -200,6 +200,17 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
                 builder.addDoubleProperty("Robot Angle", () -> getRotation().getRadians(), null);
             }
         });
+
+        SmartDashboard.putData("Gyro", new Sendable() {
+            @Override
+            public void initSendable(SendableBuilder builder) {
+                builder.setSmartDashboardType("Gyro");
+                builder.addDoubleProperty(
+                        "Value",
+                        () -> -getGyroBasedFieldRotation().getDegrees(),
+                        null);
+            }
+        });
     }
 
     @Override
@@ -404,6 +415,11 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
         return rawGyroRotation.plus(fieldGyroOffset);
     }
 
+    /** Returns the current field heading used by vision and field-relative control. */
+    public Rotation2d getFieldRotation() {
+        return getGyroBasedFieldRotation();
+    }
+
     /** Returns the current yaw rate used for vision integration. */
     public double getGyroYawRateDegPerSec() {
         return Math.toDegrees(
@@ -417,6 +433,11 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
         return gyroInputs.connected;
     }
 
+    /** Re-aligns the gyro-backed field heading to the current estimator heading. */
+    public void syncGyroToEstimatedPose() {
+        fieldGyroOffset = poseEstimator.getEstimatedPosition().getRotation().minus(rawGyroRotation);
+    }
+
     /** Resets the current odometry pose. */
     public void setPose(Pose2d pose) {
         resetSimulationPoseCallBack.accept(pose);
@@ -428,6 +449,7 @@ public class DriveSubsystem extends SubsystemBase implements VisionSubsystem.Vis
     @Override
     public void accept(Pose2d visionRobotPoseMeters, double timestampSeconds, Matrix<N3, N1> visionMeasurementStdDevs) {
         poseEstimator.addVisionMeasurement(visionRobotPoseMeters, timestampSeconds, visionMeasurementStdDevs);
+        syncGyroToEstimatedPose();
     }
 
     /** Returns the maximum linear speed in meters per sec. */

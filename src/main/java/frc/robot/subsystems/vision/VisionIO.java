@@ -27,6 +27,10 @@ public interface VisionIO {
         public TargetObservation latestTargetObservation = new TargetObservation(new Rotation2d(), new Rotation2d());
         public double latestTargetObservationTimestampSeconds = Double.NaN;
         public double latestTargetObservationLatencySeconds = 0.0;
+        public double publishedRobotYawDegrees = 0.0;
+        public Pose3d publishedCameraPoseRobotSpace = new Pose3d();
+        public boolean megatag2RejectedForYawRate = false;
+        public boolean megatag2RejectedForUntrustedOrientation = false;
         public PoseObservation[] poseObservations = new PoseObservation[0];
         public int[] tagIds = new int[0];
     }

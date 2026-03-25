@@ -226,6 +226,18 @@ public class VisionSubsystem extends SubsystemBase {
             Logger.recordOutput(
                     "Vision/Camera" + Integer.toString(cameraIndex) + "/TargetObservationLatencySeconds",
                     inputs[cameraIndex].latestTargetObservationLatencySeconds);
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/PublishedRobotYawDegrees",
+                    inputs[cameraIndex].publishedRobotYawDegrees);
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/PublishedCameraPoseRobotSpace",
+                    inputs[cameraIndex].publishedCameraPoseRobotSpace);
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/MegaTag2RejectedForYawRate",
+                    inputs[cameraIndex].megatag2RejectedForYawRate);
+            Logger.recordOutput(
+                    "Vision/Camera" + Integer.toString(cameraIndex) + "/MegaTag2RejectedForUntrustedOrientation",
+                    inputs[cameraIndex].megatag2RejectedForUntrustedOrientation);
             allTagPoses.addAll(tagPoses);
             allRobotPoses.addAll(robotPoses);
             allRobotPosesAccepted.addAll(robotPosesAccepted);

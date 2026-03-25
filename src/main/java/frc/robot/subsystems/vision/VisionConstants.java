@@ -53,9 +53,9 @@ public class VisionConstants {
     };
 
     // Pose solvers enabled for each camera.
-    // The chassis camera should feed odometry from MegaTag 2 only.
+    // The chassis camera uses MegaTag 1 to seed/correct heading and MegaTag 2 for lower-noise translation.
     public static boolean[] cameraMegaTag1Enabled = new boolean[] {
-        false, // Chassis camera
+        true, // Chassis camera
         false // Turret camera
     };
     public static boolean[] cameraMegaTag2Enabled = new boolean[] {
@@ -119,14 +119,6 @@ public class VisionConstants {
         return switch (cameraIndex) {
             case turretCameraIndex -> new int[] {10, 26};
             default -> new int[0];
-        };
-    }
-
-    public static String getCameraName(int cameraIndex) {
-        return switch (cameraIndex) {
-            case chassisCameraIndex -> camera0Name;
-            case turretCameraIndex -> camera1Name;
-            default -> "";
         };
     }
 

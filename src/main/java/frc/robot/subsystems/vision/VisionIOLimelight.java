@@ -251,6 +251,17 @@ public class VisionIOLimelight implements VisionIO {
         // Publish robot orientation and live camera pose for MegaTag 2 / moving cameras.
         Transform3d robotToCamera = robotToCameraSupplier.get();
         Rotation3d cameraRotation = robotToCamera.getRotation();
+        Rotation2d publishedRobotYaw = robotRotationSupplier.get();
+        double robotYawRateDegPerSec = robotYawRateSupplierDegPerSec.getAsDouble();
+        boolean rejectMegaTag2ForYawRate =
+                Math.abs(robotYawRateDegPerSec) > VisionConstants.maxMegaTag2YawRateDegPerSec;
+        boolean rejectMegaTag2ForUntrustedOrientation = !robotOrientationTrustedSupplier.getAsBoolean();
+
+        inputs.publishedRobotYawDegrees = publishedRobotYaw.getDegrees();
+        inputs.publishedCameraPoseRobotSpace = new Pose3d(robotToCamera.getTranslation(), cameraRotation);
+        inputs.megatag2RejectedForYawRate = rejectMegaTag2ForYawRate;
+        inputs.megatag2RejectedForUntrustedOrientation = rejectMegaTag2ForUntrustedOrientation;
+
         LimelightHelpers.setCameraPose_RobotSpace(
                 name,
                 robotToCamera.getX(),
@@ -259,11 +270,9 @@ public class VisionIOLimelight implements VisionIO {
                 Units.radiansToDegrees(cameraRotation.getX()),
                 Units.radiansToDegrees(cameraRotation.getY()),
                 Units.radiansToDegrees(cameraRotation.getZ()));
-        double robotYawRateDegPerSec = robotYawRateSupplierDegPerSec.getAsDouble();
         LimelightHelpers.SetRobotOrientation_NoFlush(
-                name, robotRotationSupplier.get().getDegrees(), robotYawRateDegPerSec, 0.0, 0.0, 0.0, 0.0);
+                name, publishedRobotYaw.getDegrees(), robotYawRateDegPerSec, 0.0, 0.0, 0.0, 0.0);
         LimelightHelpers.Flush();
-        boolean rejectMegaTag2ForUntrustedOrientation = !robotOrientationTrustedSupplier.getAsBoolean();
 
         // Read new pose observations from NetworkTables
         Set<Integer> tagIds = new HashSet<>();
@@ -282,7 +291,6 @@ public class VisionIOLimelight implements VisionIO {
                     rawSample.value[9],
                     PoseObservationType.MEGATAG_1));
         }
-        boolean rejectMegaTag2ForYawRate = Math.abs(robotYawRateDegPerSec) > VisionConstants.maxMegaTag2YawRateDegPerSec;
         for (var rawSample : megatag2Subscriber.readQueue()) {
             if (!enableMegaTag2 || rejectMegaTag2ForYawRate || rejectMegaTag2ForUntrustedOrientation) continue;
             if (rawSample.value.length == 0) continue;

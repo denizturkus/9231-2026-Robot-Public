@@ -34,9 +34,12 @@ import org.ironmaple.simulation.SimulatedArena;
 public class IntakeIOSim implements IntakeIO {
 	private CustomDCMotorSim m_rollerSim;
 	private CustomSingleJointedArmSim m_armSim;
+	private TrapezoidProfile.Constraints m_armConstraints = new TrapezoidProfile.Constraints(
+			kMotionMagicMaxVelocityDegPerSec,
+			kMotionMagicAccelerationDegPerSecSq);
 
 	private ProfiledPIDController m_armPid = new ProfiledPIDController(kPSim, 0, kDSim,
-			new TrapezoidProfile.Constraints(kMotionMagicMaxVelocityDegPerSec, kMotionMagicAccelerationDegPerSecSq));
+			m_armConstraints);
 	private ArmFeedforward m_armFeedforward = new ArmFeedforward(kSSim, kGSim, 0);
 	private double m_closedLoopSetpoint;
 	private boolean m_isArmSetpoint = false;
@@ -102,6 +105,12 @@ public class IntakeIOSim implements IntakeIO {
 
 	@Override
 	public void runArmPosition(double degrees) {
+		runArmPosition(degrees, kMotionMagicMaxVelocityDegPerSec, kMotionMagicAccelerationDegPerSecSq);
+	}
+
+	@Override
+	public void runArmPosition(double degrees, double cruiseVelocityDegPerSec, double accelerationDegPerSecSq) {
+		updateArmConstraintsIfNeeded(cruiseVelocityDegPerSec, accelerationDegPerSecSq);
 		m_closedLoopSetpoint = degrees;
 		m_isArmSetpoint = true;
 	}
@@ -109,5 +118,15 @@ public class IntakeIOSim implements IntakeIO {
 	@Override
 	public void zeroArmEncoders() {
 		m_armSim.setState(kArmCalibrationAngleDeg, 0);
+	}
+
+	private void updateArmConstraintsIfNeeded(double cruiseVelocityDegPerSec, double accelerationDegPerSecSq) {
+		if (m_armConstraints.maxVelocity == cruiseVelocityDegPerSec
+				&& m_armConstraints.maxAcceleration == accelerationDegPerSecSq) {
+			return;
+		}
+
+		m_armConstraints = new TrapezoidProfile.Constraints(cruiseVelocityDegPerSec, accelerationDegPerSecSq);
+		m_armPid.setConstraints(m_armConstraints);
 	}
 }

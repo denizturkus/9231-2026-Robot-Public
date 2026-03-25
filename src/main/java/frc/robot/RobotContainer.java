@@ -30,6 +30,7 @@ import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
@@ -123,7 +124,7 @@ public class RobotContainer {
                         drive,
                         new VisionIOLimelight(
                                 VisionConstants.camera0Name,
-                                drive::getGyroBasedFieldRotation,
+                                drive::getFieldRotation,
                                 drive::getGyroYawRateDegPerSec,
                                 drive::isGyroConnected,
                                 () -> VisionConstants.robotToCamera0,
@@ -132,7 +133,7 @@ public class RobotContainer {
                                 VisionConstants.isCameraMegaTag2Enabled(VisionConstants.chassisCameraIndex)),
                         new VisionIOLimelight(
                                 VisionConstants.camera1Name,
-                                drive::getGyroBasedFieldRotation,
+                                drive::getFieldRotation,
                                 drive::getGyroYawRateDegPerSec,
                                 () -> VisionConstants.getTurretCameraTransform(Rotation2d.fromDegrees(turret.getAngle())),
                                 VisionConstants.getSimpleTargetAllowedTagIds(VisionConstants.turretCameraIndex),
@@ -260,6 +261,10 @@ public class RobotContainer {
     }
 
     private void registerNamedCommands() {
+        NamedCommands.registerCommand("ExtendIntakeArm", superstructure.ExtendIntakeArmCommand());
+        NamedCommands.registerCommand("RunIntakeRollers", superstructure.RunIntakeRollersCommand());
+        NamedCommands.registerCommand("RetractIntakeArm", superstructure.RetractIntakeArmCommand());
+        NamedCommands.registerCommand("StopIntakeRollers", superstructure.StopIntakeRollersCommand());
         NamedCommands.registerCommand("StartIntaking", superstructure.StartIntakingCommand());
         NamedCommands.registerCommand("StopIntaking", superstructure.StopIntakingCommand());
         NamedCommands.registerCommand("ShootFuel", superstructure.ShootFuelCommand());
@@ -310,14 +315,16 @@ public class RobotContainer {
                 ? () -> drive.setPose(
                         driveSimulation.getSimulatedDriveTrainPose()) // reset odometry to actual robot pose during
                 // simulation
-                : () -> drive.setPose(new Pose2d(drive.getPose().getTranslation(), new Rotation2d())); // zero gyro
+                : drive::syncGyroToEstimatedPose;
         driverController.start().onTrue(Commands.runOnce(resetGyro, drive).ignoringDisable(true));
 
         // OPERATIVE CONTROLS ------------------------------------
 
-        // intake 
-        operatorController.a().onTrue(superstructure.StartIntakingCommand());
-        operatorController.b().onTrue(superstructure.StopIntakingCommand());
+        // intake
+        operatorController.a().onTrue(superstructure.ExtendIntakeArmCommand());
+        operatorController.leftStick().onTrue(superstructure.RunIntakeRollersCommand());
+        operatorController.rightStick().onTrue(superstructure.StopIntakeRollersCommand());
+        operatorController.b().onTrue(superstructure.RetractIntakeArmCommand());
 
         // feed balls into the shooter
         operatorController.x().whileTrue(superstructure.ShootFuelCommand());
@@ -327,8 +334,10 @@ public class RobotContainer {
 
         
         // automated targeting
-        operatorController.rightBumper().onTrue(superstructure.TargetHubCommand());
-        operatorController.leftBumper().onTrue(superstructure.TargetAllianceSideCommand());
+        operatorController.rightBumper().onTrue(
+                Commands.runOnce(() -> CommandScheduler.getInstance().schedule(superstructure.TargetHubCommand())));
+        operatorController.leftBumper().onTrue(
+                Commands.runOnce(() -> CommandScheduler.getInstance().schedule(superstructure.TargetAllianceSideCommand())));
         operatorController.leftTrigger().onTrue(superstructure.CancelTargetingCommand());
 
         // sets hood angles manually (degrees)

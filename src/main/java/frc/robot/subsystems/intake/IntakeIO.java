@@ -68,6 +68,18 @@ public interface IntakeIO {
 	public default void runArmPosition(double degrees) {}
 
 	/**
+	 * Moves the arm to the given angle with the provided Motion Magic profile.
+	 *
+	 * @param degrees The angle, in degrees.
+	 * @param cruiseVelocityDegPerSec The cruise velocity, in degrees per second.
+	 * @param accelerationDegPerSecSq The acceleration, in degrees per second squared.
+	 */
+	public default void runArmPosition(
+			double degrees, double cruiseVelocityDegPerSec, double accelerationDegPerSecSq) {
+		runArmPosition(degrees);
+	}
+
+	/**
 	 * Resets the arm encoders according to the calibration angle.
 	 */
 	public default void zeroArmEncoders() {}

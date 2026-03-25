@@ -68,10 +68,10 @@ public final class Constants {
 
 		public static final double[][] kFlywheelSpeedRpmTable =
 				new double[][] {
-					{2.5, 4300},
-					{3, 4300},
-					{3.5, 4500},
-					{4, 4800}
+					//{2.5, 4300},
+					//{3, 4300},
+					{3.5, 3500}
+					//{4, 4800}
 				};
 
 		public static final InterpolatingDoubleTreeMap kFlywheelSpeedRpm =

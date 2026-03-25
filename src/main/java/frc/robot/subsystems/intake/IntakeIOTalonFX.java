@@ -49,7 +49,12 @@ import java.util.List;
 
 /** The IO hardware implementation for intake hardware interacions with the TalonFX. */
 public class IntakeIOTalonFX implements IntakeIO {
+	private static final int kConfigApplyAttempts = 5;
+
 	private TalonFX m_rollerTalon, m_armTalon;
+	private final TalonFXConfiguration m_armMotorConfig = new TalonFXConfiguration();
+	private double m_armMotionMagicCruiseVelocityDegPerSec = kMotionMagicMaxVelocityDegPerSec;
+	private double m_armMotionMagicAccelerationDegPerSecSq = kMotionMagicAccelerationDegPerSecSq;
 
 	private VoltageOut m_rollerVoltage = new VoltageOut(0.0).withEnableFOC(kIsFOC),
 			m_armVoltage = new VoltageOut(0).withEnableFOC(kIsFOC);
@@ -74,26 +79,26 @@ public class IntakeIOTalonFX implements IntakeIO {
 		m_armTalon = new TalonFX(kArmMotorID, new CANBus(kArmMotorCANBus));
 
 		// Configure arm motor
-		TalonFXConfiguration armMotorConfig = new TalonFXConfiguration();
-		armMotorConfig.CurrentLimits.StatorCurrentLimitEnable = true;
-		armMotorConfig.CurrentLimits.StatorCurrentLimit = kArmMotorStatorLimitAmps;
-		armMotorConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
-		armMotorConfig.CurrentLimits.SupplyCurrentLimit = kArmMotorSupplyLimitAmps;
-		armMotorConfig.MotorOutput.DutyCycleNeutralDeadband = 0.03;
-		armMotorConfig.MotorOutput.NeutralMode = NeutralModeValue.Brake;
-		armMotorConfig.MotorOutput.Inverted = kArmMotorInverted ? InvertedValue.Clockwise_Positive
+		m_armMotorConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+		m_armMotorConfig.CurrentLimits.StatorCurrentLimit = kArmMotorStatorLimitAmps;
+		m_armMotorConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
+		m_armMotorConfig.CurrentLimits.SupplyCurrentLimit = kArmMotorSupplyLimitAmps;
+		m_armMotorConfig.MotorOutput.DutyCycleNeutralDeadband = 0.03;
+		m_armMotorConfig.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+		m_armMotorConfig.MotorOutput.Inverted = kArmMotorInverted ? InvertedValue.Clockwise_Positive
 				: InvertedValue.CounterClockwise_Positive;
-		armMotorConfig.Feedback.SensorToMechanismRatio = kArmGearboxReduction;
-		armMotorConfig.Slot0.kS = kS;
-		armMotorConfig.Slot0.kP = kP * 360.0;
-		armMotorConfig.Slot0.kD = kD * 360.0;
-		armMotorConfig.Slot0.kG = kG;
-		armMotorConfig.MotionMagic.MotionMagicCruiseVelocity = kMotionMagicMaxVelocityDegPerSec / 360.0;
-		armMotorConfig.MotionMagic.MotionMagicAcceleration = kMotionMagicAccelerationDegPerSecSq / 360.0;
-		armMotorConfig.Slot0.GravityType = GravityTypeValue.Arm_Cosine;
-		armMotorConfig.ClosedLoopGeneral.ContinuousWrap = true;
+		m_armMotorConfig.Feedback.SensorToMechanismRatio = kArmGearboxReduction;
+		m_armMotorConfig.Slot0.kS = kS;
+		m_armMotorConfig.Slot0.kP = kP * 360.0;
+		m_armMotorConfig.Slot0.kD = kD * 360.0;
+		m_armMotorConfig.Slot0.kG = kG;
+		m_armMotorConfig.Slot0.GravityType = GravityTypeValue.Arm_Cosine;
+		m_armMotorConfig.ClosedLoopGeneral.ContinuousWrap = true;
+		updateArmMotionMagicConfig(
+				kMotionMagicMaxVelocityDegPerSec,
+				kMotionMagicAccelerationDegPerSecSq);
 
-		PhoenixUtil.applyConfigWithRetry(m_armTalon, armMotorConfig, kArmMotorID);
+		PhoenixUtil.applyConfigWithRetry(m_armTalon, m_armMotorConfig, kConfigApplyAttempts);
 
 		// Configure roller motor
 		TalonFXConfiguration motorConfig = new TalonFXConfiguration();
@@ -107,7 +112,7 @@ public class IntakeIOTalonFX implements IntakeIO {
 				: InvertedValue.CounterClockwise_Positive;
 		motorConfig.Feedback.SensorToMechanismRatio = kRollerGearboxReduction;
 
-		PhoenixUtil.applyConfigWithRetry(m_rollerTalon, motorConfig, kRollerMotorID);
+		PhoenixUtil.applyConfigWithRetry(m_rollerTalon, motorConfig, kConfigApplyAttempts);
 
 		// Status signals
 		m_rollerVoltsSignal = m_rollerTalon.getMotorVoltage();
@@ -171,6 +176,15 @@ public class IntakeIOTalonFX implements IntakeIO {
 
 	@Override
 	public void runArmPosition(double degrees) {
+		runArmPosition(
+				degrees,
+				m_armMotionMagicCruiseVelocityDegPerSec,
+				m_armMotionMagicAccelerationDegPerSecSq);
+	}
+
+	@Override
+	public void runArmPosition(double degrees, double cruiseVelocityDegPerSec, double accelerationDegPerSecSq) {
+		applyArmMotionMagicProfileIfNeeded(cruiseVelocityDegPerSec, accelerationDegPerSecSq);
 		m_armTalon.setControl(
 				m_armPosition.withPosition(Units.degreesToRotations(MathUtil.inputModulus(degrees, -180, 180))));
 	}
@@ -188,5 +202,22 @@ public class IntakeIOTalonFX implements IntakeIO {
 	@Override
 	public List<ParentDevice> getOrchestraDevices() {
 		return List.of(m_rollerTalon, m_armTalon);
+	}
+
+	private void applyArmMotionMagicProfileIfNeeded(double cruiseVelocityDegPerSec, double accelerationDegPerSecSq) {
+		if (cruiseVelocityDegPerSec == m_armMotionMagicCruiseVelocityDegPerSec
+				&& accelerationDegPerSecSq == m_armMotionMagicAccelerationDegPerSecSq) {
+			return;
+		}
+
+		updateArmMotionMagicConfig(cruiseVelocityDegPerSec, accelerationDegPerSecSq);
+		PhoenixUtil.applyConfigWithRetry(m_armTalon, m_armMotorConfig, kConfigApplyAttempts);
+	}
+
+	private void updateArmMotionMagicConfig(double cruiseVelocityDegPerSec, double accelerationDegPerSecSq) {
+		m_armMotorConfig.MotionMagic.MotionMagicCruiseVelocity = cruiseVelocityDegPerSec / 360.0;
+		m_armMotorConfig.MotionMagic.MotionMagicAcceleration = accelerationDegPerSecSq / 360.0;
+		m_armMotionMagicCruiseVelocityDegPerSec = cruiseVelocityDegPerSec;
+		m_armMotionMagicAccelerationDegPerSecSq = accelerationDegPerSecSq;
 	}
 }

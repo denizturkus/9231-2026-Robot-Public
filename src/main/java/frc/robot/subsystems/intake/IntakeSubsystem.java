@@ -6,7 +6,11 @@ import static frc.robot.subsystems.intake.IntakeConstants.kArmMaxTemperature;
 import static frc.robot.subsystems.intake.IntakeConstants.kArmMotorID;
 import static frc.robot.subsystems.intake.IntakeConstants.kArmOpenedAngle;
 import static frc.robot.subsystems.intake.IntakeConstants.kIntakeRollerVoltage;
+import static frc.robot.subsystems.intake.IntakeConstants.kMotionMagicAccelerationDegPerSecSq;
+import static frc.robot.subsystems.intake.IntakeConstants.kMotionMagicMaxVelocityDegPerSec;
 import static frc.robot.subsystems.intake.IntakeConstants.kOuttakeRollerVoltage;
+import static frc.robot.subsystems.intake.IntakeConstants.kRetractMotionMagicAccelerationDegPerSecSq;
+import static frc.robot.subsystems.intake.IntakeConstants.kRetractMotionMagicMaxVelocityDegPerSec;
 import static frc.robot.subsystems.intake.IntakeConstants.kRollerMaxTemperature;
 import static frc.robot.subsystems.intake.IntakeConstants.kRollerMotorID;
 
@@ -84,14 +88,20 @@ public class IntakeSubsystem extends SubsystemBase {
 	 * Opens the arm of the intake.
 	 */
 	public void openIntake() {
-		setIntakeAngle(kArmOpenedAngle);
+		setIntakeAngle(
+				kArmOpenedAngle,
+				kMotionMagicMaxVelocityDegPerSec,
+				kMotionMagicAccelerationDegPerSecSq);
 	}
 
 	/**
 	 * Closes the arm of the intake.
 	 */
 	public void closeIntake() {
-		setIntakeAngle(kArmClosedAngle);
+		setIntakeAngle(
+				kArmClosedAngle,
+				kRetractMotionMagicMaxVelocityDegPerSec,
+				kRetractMotionMagicAccelerationDegPerSecSq);
 	}
 
 	/**
@@ -121,7 +131,21 @@ public class IntakeSubsystem extends SubsystemBase {
 	 * @param degs The angle, in degrees.
 	 */
 	public void setIntakeAngle(double degs) {
-		m_io.runArmPosition(MathUtil.inputModulus(degs, -180, 180));
+		setIntakeAngle(degs, kMotionMagicMaxVelocityDegPerSec, kMotionMagicAccelerationDegPerSecSq);
+	}
+
+	/**
+	 * Moves the intake arm to the given angle using the provided motion profile.
+	 *
+	 * @param degs The angle, in degrees.
+	 * @param cruiseVelocityDegPerSec The cruise velocity, in degrees per second.
+	 * @param accelerationDegPerSecSq The acceleration, in degrees per second squared.
+	 */
+	public void setIntakeAngle(double degs, double cruiseVelocityDegPerSec, double accelerationDegPerSecSq) {
+		m_io.runArmPosition(
+				MathUtil.inputModulus(degs, -180, 180),
+				cruiseVelocityDegPerSec,
+				accelerationDegPerSecSq);
 		m_latestSetpoint = degs;
 	}
 
@@ -196,7 +220,28 @@ public class IntakeSubsystem extends SubsystemBase {
 	 * @return Whether the intake arm is near its setpoint.
 	 */
 	public boolean isArmNearSetpoint() {
-		return MathUtil.isNear(m_latestSetpoint, getIntakeAngle(), kArmDefaultSetpointToleranceDeg);
+		return isArmNearAngle(m_latestSetpoint, kArmDefaultSetpointToleranceDeg);
+	}
+
+	/**
+	 * Returns whether the intake arm is near the provided angle using the default tolerance.
+	 *
+	 * @param targetAngleDeg The angle to compare against, in degrees.
+	 * @return Whether the arm is near that angle.
+	 */
+	public boolean isArmNearAngle(double targetAngleDeg) {
+		return isArmNearAngle(targetAngleDeg, kArmDefaultSetpointToleranceDeg);
+	}
+
+	/**
+	 * Returns whether the intake arm is near the provided angle.
+	 *
+	 * @param targetAngleDeg The angle to compare against, in degrees.
+	 * @param toleranceDeg The allowed error, in degrees.
+	 * @return Whether the arm is near that angle.
+	 */
+	public boolean isArmNearAngle(double targetAngleDeg, double toleranceDeg) {
+		return Math.abs(MathUtil.inputModulus(targetAngleDeg - getIntakeAngle(), -180, 180)) <= toleranceDeg;
 	}
 
 	/**

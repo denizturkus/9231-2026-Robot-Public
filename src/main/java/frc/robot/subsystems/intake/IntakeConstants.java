@@ -19,14 +19,16 @@ public class IntakeConstants {
 	public static final double kOuttakeRollerVoltage = -3.5;
 	// Arm PID/feedforward
 	// Units: Volts, Degrees
-	// These values are intentionally more aggressive so the arm commands more than ~1V
-	// when overcoming gravity and stiction near the endpoints.
+	// Keep enough authority to overcome gravity and stiction near the endpoints
+	// without making the arm motion feel too abrupt.
 	public static final double kS = 1.2;
 	public static final double kP = 0.18, kD = 0, kG = 1.0;
 	public static final double kSSim = 1.2;
 	public static final double kPSim = 0.18, kDSim = 0, kGSim = 1.0;
-	public static final double kMotionMagicMaxVelocityDegPerSec = 360;
-	public static final double kMotionMagicAccelerationDegPerSecSq = 1080;
+	public static final double kMotionMagicMaxVelocityDegPerSec = 77;
+	public static final double kMotionMagicAccelerationDegPerSecSq = 150;
+	public static final double kRetractMotionMagicMaxVelocityDegPerSec = 100;
+	public static final double kRetractMotionMagicAccelerationDegPerSecSq = 225;
 	// The angle at which the encoders are zeroed, the angle at the start of the match
 	public static final double kArmCalibrationAngleDeg = 145;
 	public static final double kArmClosedAngle = 145, kArmOpenedAngle = 0;
@@ -37,7 +39,7 @@ public class IntakeConstants {
 
 	// Gearbox reduction
 	public static final double kRollerGearboxReduction = 1; // A 1:1 ratio (I/O)
-	public static final double kArmGearboxReduction = 60 * 15 / 17; // A 5:1 ratio (I/O)
+	public static final double kArmGearboxReduction = 60 * 15 / 17; //
 
 	// Current limits for the motor
 	public static final double kRollerMotorSupplyLimitAmps = 20.0;

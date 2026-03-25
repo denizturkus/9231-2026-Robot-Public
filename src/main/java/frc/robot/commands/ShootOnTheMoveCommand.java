@@ -55,6 +55,7 @@ public class ShootOnTheMoveCommand extends Command {
   private final int turretVisionCameraIndex;
   private final Consumer<ShotSolution> shotSolutionConsumer;
   private final BooleanSupplier manualShotOverrideSupplier;
+  private final BooleanSupplier manualHoodOverrideSupplier;
   private final DoubleSupplier manualHoodAngleSupplier;
   private final DoubleSupplier manualFlywheelRpmSupplier;
   private final Deque<TimedTurretAngleSample> turretAngleHistory = new ArrayDeque<>();
@@ -112,8 +113,36 @@ public class ShootOnTheMoveCommand extends Command {
         turretVisionCameraIndex,
         shotSolutionConsumer,
         () -> false,
+        () -> false,
         () -> 0.0,
         () -> 0.0);
+  }
+
+  public ShootOnTheMoveCommand(
+      DriveSubsystem drive,
+      TurretSubsystem turret,
+      HoodSubsystem hood,
+      TargetingMode targetingMode,
+      VisionSubsystem vision,
+      int turretVisionCameraIndex,
+      Consumer<ShotSolution> shotSolutionConsumer,
+      BooleanSupplier manualShotOverrideSupplier,
+      BooleanSupplier manualHoodOverrideSupplier,
+      DoubleSupplier manualHoodAngleSupplier,
+      DoubleSupplier manualFlywheelRpmSupplier) {
+    this(
+        drive,
+        turret,
+        hood,
+        null,
+        targetingMode,
+        vision,
+        turretVisionCameraIndex,
+        shotSolutionConsumer,
+        manualShotOverrideSupplier,
+        manualHoodOverrideSupplier,
+        manualHoodAngleSupplier,
+        manualFlywheelRpmSupplier);
   }
 
   public ShootOnTheMoveCommand(
@@ -131,12 +160,12 @@ public class ShootOnTheMoveCommand extends Command {
         drive,
         turret,
         hood,
-        null,
         targetingMode,
         vision,
         turretVisionCameraIndex,
         shotSolutionConsumer,
         manualShotOverrideSupplier,
+        () -> false,
         manualHoodAngleSupplier,
         manualFlywheelRpmSupplier);
   }
@@ -160,6 +189,7 @@ public class ShootOnTheMoveCommand extends Command {
         turretVisionCameraIndex,
         shotSolutionConsumer,
         () -> false,
+        () -> false,
         () -> 0.0,
         () -> 0.0);
   }
@@ -174,6 +204,7 @@ public class ShootOnTheMoveCommand extends Command {
       int turretVisionCameraIndex,
       Consumer<ShotSolution> shotSolutionConsumer,
       BooleanSupplier manualShotOverrideSupplier,
+      BooleanSupplier manualHoodOverrideSupplier,
       DoubleSupplier manualHoodAngleSupplier,
       DoubleSupplier manualFlywheelRpmSupplier) {
     this.drive = Objects.requireNonNull(drive, "drive");
@@ -187,6 +218,8 @@ public class ShootOnTheMoveCommand extends Command {
         shotSolutionConsumer != null ? shotSolutionConsumer : (solution) -> {};
     this.manualShotOverrideSupplier =
         manualShotOverrideSupplier != null ? manualShotOverrideSupplier : () -> false;
+    this.manualHoodOverrideSupplier =
+        manualHoodOverrideSupplier != null ? manualHoodOverrideSupplier : () -> false;
     this.manualHoodAngleSupplier =
         manualHoodAngleSupplier != null ? manualHoodAngleSupplier : () -> 0.0;
     this.manualFlywheelRpmSupplier =
@@ -428,14 +461,17 @@ public class ShootOnTheMoveCommand extends Command {
         "ShootOnTheMove/TurretVisionObservedTurretAngleDeg", turretVisionObservedTurretAngleDeg);
 
     boolean manualShotOverrideActive = manualShotOverrideSupplier.getAsBoolean();
+    boolean manualHoodOverrideActive = manualHoodOverrideSupplier.getAsBoolean();
     double hoodAngleDeg =
         sampleInterpolatedValue(
             Constants.ShootOnTheMoveConstants.kHoodAngleDegreesTable, lookaheadDistance);
     double flywheelRpm =
         sampleInterpolatedValue(
             Constants.ShootOnTheMoveConstants.kFlywheelSpeedRpmTable, lookaheadDistance);
-    if (manualShotOverrideActive) {
+    if (manualShotOverrideActive || manualHoodOverrideActive) {
       hoodAngleDeg = manualHoodAngleSupplier.getAsDouble();
+    }
+    if (manualShotOverrideActive) {
       flywheelRpm = manualFlywheelRpmSupplier.getAsDouble();
     }
     boolean shotIsValid =
@@ -474,7 +510,7 @@ public class ShootOnTheMoveCommand extends Command {
         filteredTurretVisionTxDeg,
         turretVisionLineOfSightAngleDeg,
         turretVelocityDegPerSecond,
-        manualShotOverrideActive,
+        manualShotOverrideActive || manualHoodOverrideActive,
         hoodAngleDeg,
         hoodVelocityDegPerSecond,
         flywheelRpm);
@@ -628,7 +664,7 @@ public class ShootOnTheMoveCommand extends Command {
       return Double.NaN;
     }
 
-    String cameraName = VisionConstants.getCameraName(turretVisionCameraIndex);
+    String cameraName = "limelight-turret";
     var tagPose = VisionConstants.aprilTagLayout.getTagPose(targetTagId);
     if (cameraName.isEmpty() || tagPose.isEmpty()) {
       return Double.NaN;
