@@ -12,15 +12,15 @@ public class FeederConstants {
 
 	// Control parameters
 	// Voltage when feeding, ~2000 RPM for the Kraken X60.
-	public static final double kFeedVoltage = 4.5;
+	public static final double kFeedVoltage = 9;
 	public static final double kUnfeedVoltage = -3.5;
 
 	// Gearbox reduction
 	public static final double kGearboxReduction = 4;
 
 	// Current limit for the motor
-	public static final double kMotorSupplyLimitAmps = 30;
-	public static final double kMotorStatorLimitAmps = 40;
+	public static final double kMotorSupplyLimitAmps = 40;
+	public static final double kMotorStatorLimitAmps = 60;
 
     public static final double kPeakForwardDutyCycle = 0.6;
     public static final double kPeakReverseDutyCycle = 0.6;

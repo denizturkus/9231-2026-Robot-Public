@@ -16,13 +16,13 @@ public final class HopperConstants {
     public static final InvertedValue kMotorInverted = InvertedValue.Clockwise_Positive;
     public static final NeutralModeValue kNeutralMode = NeutralModeValue.Brake;
 
-    public static final double kSupplyCurrentLimitAmps = 35.0;
-    public static final double kStatorCurrentLimitAmps = 50.0;
+    public static final double kSupplyCurrentLimitAmps = 40.0;
+    public static final double kStatorCurrentLimitAmps = 60.0;
     public static final boolean kEnableSupplyCurrentLimit = true;
     public static final boolean kEnableStatorCurrentLimit = true;
 
     // Open-loop voltage commands
-    public static final double kFeedVoltage = 6;
+    public static final double kFeedVoltage = 9;
     public static final double kReverseVoltage = -4.0;
     public static final double kStopVoltage = 0.0;
 
