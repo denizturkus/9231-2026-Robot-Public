@@ -2,8 +2,6 @@ package frc.robot;
 
 import static edu.wpi.first.units.Units.Centimeters;
 import static edu.wpi.first.units.Units.Kilograms;
-import static edu.wpi.first.units.Units.Inches;
-import static edu.wpi.first.units.Units.Meters;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Rotation3d;
@@ -58,7 +56,13 @@ public final class Constants {
 		public static final double[][] kHoodAngleDegreesTable =
 				new double[][] {
 					{1.2, 12},
-					{1.5, 17}
+					{1.5, 17},
+					{1.8, 21},
+					{2.1, 23},
+					{2.4, 26},
+					{2.7, 30},
+					{3.0, 35},
+					{3.2, 40}
 				};
 
 		public static final InterpolatingDoubleTreeMap kHoodAngleDegrees =

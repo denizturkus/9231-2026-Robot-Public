@@ -100,7 +100,7 @@ public class Superstructure extends SubsystemBase {
     private final LoggedNetworkNumber targetingManualShotEnabledSetpoint = new LoggedNetworkNumber("LiveSetpoints/TargetingManualShotEnabled", 0);
     private final LoggedNetworkNumber turretTestAngleSetpoint = new LoggedNetworkNumber("LiveSetpoints/TurretAngleSetpoint", 30);
     private final LoggedNetworkNumber hoodTestAngleSetpoint = new LoggedNetworkNumber("LiveSetpoints/HoodAngleSetpoint", 30);
-    private final LoggedNetworkNumber flywheelTestRPMSetpoint = new LoggedNetworkNumber("LiveSetpoints/FlywheelRPMSetpoint", 2500);
+    private final LoggedNetworkNumber flywheelTestRPMSetpoint = new LoggedNetworkNumber("LiveSetpoints/FlywheelRPMSetpoint", 4000);
     private final Field2d shotField = new Field2d();
 
     private boolean m_isFeeding = false;

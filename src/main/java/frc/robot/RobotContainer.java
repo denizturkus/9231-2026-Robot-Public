@@ -296,6 +296,7 @@ public class RobotContainer {
      */
     private void configureButtonBindings() {
 
+
         // DRIVE-RELATED CONTROLS ---------------------------------
 
         // Default command, normal field-relative drive
@@ -314,10 +315,10 @@ public class RobotContainer {
         // Reset gyro / odometry
         final Runnable resetGyro = Constants.currentMode == Constants.Mode.SIM
                 ? () -> drive.setPose(
-                        driveSimulation.getSimulatedDriveTrainPose()) // reset odometry to actual robot pose during
-                // simulation
+                        driveSimulation.getSimulatedDriveTrainPose()) // reset odometry to actual robot pose during simulation
                 : drive::syncGyroToEstimatedPose;
         driverController.start().onTrue(Commands.runOnce(resetGyro, drive).ignoringDisable(true));
+
 
         // OPERATIVE CONTROLS ------------------------------------
 
@@ -331,8 +332,6 @@ public class RobotContainer {
         operatorController.x().whileTrue(superstructure.ShootFuelCommand());
 
         operatorController.y().whileTrue(superstructure.ManualReverseHopperCommand());
-
-
         
         // automated targeting
         operatorController.rightBumper().onTrue(
@@ -351,14 +350,9 @@ public class RobotContainer {
         operatorController.povLeft().onTrue(superstructure.HoodManual32DegsCommand());
         operatorController.povDownLeft().onTrue(superstructure.HoodManual36DegsCommand());
 
-        // zeroes hood and turret encoders and gets current positions as their zeroes
-        operatorController.back().onTrue(Commands.parallel(Commands.runOnce(turret::zeroEncoders), Commands.runOnce(hood::zeroEncoders)));
 
-                
-       // operatorController.rightBumper().onTrue(superstructure.SetTurretAngleTestCommand());
-        //operatorController.leftBumper().onTrue(superstructure.SetHoodAngleTestCommand()); 
+        // SOME MUSIC TO MOTIVATE PEOPLE IN CASE ROBOT FAILS ------------------------
 
-        // some music in case robot fails to motivate people
         musicController.leftStick().onTrue(Commands.runOnce(this::configureOrchestra).ignoringDisable(true));
         musicController.start().onTrue(Commands.runOnce(this::startMusic).ignoringDisable(true));
         musicController.a().onTrue(Commands.runOnce(() -> loadMusic("IAMMUSIC/rickroll.chrp")).ignoringDisable(true));
