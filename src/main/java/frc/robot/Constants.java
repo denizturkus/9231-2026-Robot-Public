@@ -61,7 +61,7 @@ public final class Constants {
 					{2.1, 23},
 					{2.4, 26},
 					{2.7, 30},
-					{3.0, 35},
+					{3.0, 35},    
 					{3.2, 40}
 				};
 
@@ -70,7 +70,7 @@ public final class Constants {
 
 		public static final double[][] kFlywheelSpeedRpmTable =
 				new double[][] {
-					{3.5, 4000}
+					{3.5, 4000} // fixed rpm to 4000 after the reduction change
 				};
 
 		public static final InterpolatingDoubleTreeMap kFlywheelSpeedRpm =

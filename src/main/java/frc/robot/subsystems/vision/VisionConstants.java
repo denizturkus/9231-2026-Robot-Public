@@ -14,7 +14,7 @@ public class VisionConstants {
     public static final int turretCameraIndex = 1;
 
     // AprilTag layout
-    public static AprilTagFieldLayout aprilTagLayout = AprilTagFieldLayout.loadField(AprilTagFields.kDefaultField);
+    public static AprilTagFieldLayout aprilTagLayout = AprilTagFieldLayout.loadField(AprilTagFields.k2026RebuiltAndymark);
 
 
     // Camera names, must match names configured on coprocessor
