@@ -15,7 +15,7 @@ public class IntakeConstants {
 	// Control parameters
 	public static final boolean kIsFOC = true;
 	// Voltage when intaking, ~2000-2500 RPM for the Kraken X60.
-	public static final double kIntakeRollerVoltage = 8;
+	public static final double kIntakeRollerVoltage = 5;
 	public static final double kOuttakeRollerVoltage = -3.5;
 	// Arm PID/feedforward
 	// Units: Volts, Degrees
@@ -43,10 +43,10 @@ public class IntakeConstants {
 
 	// Current limits for the motor
 	public static final double kRollerMotorSupplyLimitAmps = 20.0;
-	public static final double kRollerMotorStatorLimitAmps = 50.0;
+	public static final double kRollerMotorStatorLimitAmps = 35.0;
 
 	public static final double kArmMotorSupplyLimitAmps = 30.0;
-	public static final double kArmMotorStatorLimitAmps = 60.0;
+	public static final double kArmMotorStatorLimitAmps = 40.0;
 
 	// Inversions
 	public static final boolean kRollerMotorInverted = false;

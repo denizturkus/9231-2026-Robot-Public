@@ -17,7 +17,7 @@ public final class HopperConstants {
     public static final NeutralModeValue kNeutralMode = NeutralModeValue.Brake;
 
     public static final double kSupplyCurrentLimitAmps = 35.0;
-    public static final double kStatorCurrentLimitAmps = 60.0;
+    public static final double kStatorCurrentLimitAmps = 50.0;
     public static final boolean kEnableSupplyCurrentLimit = true;
     public static final boolean kEnableStatorCurrentLimit = true;
 

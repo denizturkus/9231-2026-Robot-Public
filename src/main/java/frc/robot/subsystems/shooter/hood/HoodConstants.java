@@ -29,8 +29,8 @@ public final class HoodConstants {
 	public static final boolean kUseFOC = true;
 	public static final boolean kMotorInverted = false;
 
-	public static final double kMotorSupplyLimitAmps = 50.0;
-	public static final double kMotorStatorLimitAmps = 90.0;
+	public static final double kMotorSupplyLimitAmps = 20.0;
+	public static final double kMotorStatorLimitAmps = 20.0;
 	public static final double kMaxTemperatureCelsius = 80.0;
 	public static final double kStatusSignalFrequencyHz = 100.0;
 

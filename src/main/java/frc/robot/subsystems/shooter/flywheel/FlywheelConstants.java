@@ -24,7 +24,7 @@ public final class FlywheelConstants {
     public static final boolean kFollowerOpposesLeader = true;
 
     public static final double kMotorSupplyLimitAmps = 70.0;
-    public static final double kMotorStatorLimitAmps = 120.0;
+    public static final double kMotorStatorLimitAmps = 100.0;
     public static final double kMaxTemperatureCelsius = 80.0;
     public static final double kStatusSignalFrequencyHz = 100.0;
 

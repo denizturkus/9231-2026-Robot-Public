@@ -20,7 +20,7 @@ public class FeederConstants {
 
 	// Current limit for the motor
 	public static final double kMotorSupplyLimitAmps = 30;
-	public static final double kMotorStatorLimitAmps = 45;
+	public static final double kMotorStatorLimitAmps = 40;
 
     public static final double kPeakForwardDutyCycle = 0.6;
     public static final double kPeakReverseDutyCycle = 0.6;

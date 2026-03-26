@@ -55,6 +55,7 @@ public final class Constants {
 		// TODO: INTERPOLASYON TABLOSUU
 		public static final double[][] kHoodAngleDegreesTable =
 				new double[][] {
+					{0.5, 8},
 					{1.2, 12},
 					{1.5, 17},
 					{1.8, 21},
