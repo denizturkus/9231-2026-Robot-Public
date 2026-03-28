@@ -24,7 +24,7 @@ public final class FlywheelConstants {
     public static final boolean kFollowerOpposesLeader = true;
 
     public static final double kMotorSupplyLimitAmps = 70.0;
-    public static final double kMotorStatorLimitAmps = 80.0;
+    public static final double kMotorStatorLimitAmps = 100.0;
     public static final double kMaxTemperatureCelsius = 80.0;
     public static final double kStatusSignalFrequencyHz = 100.0;
 
@@ -32,8 +32,8 @@ public final class FlywheelConstants {
     public static final double kMaxAllowedRPM = 6000.0;
     // Require a tighter band to start feeding, then allow a wider hold band so
     // shot-to-shot RPM dips do not chatter the feeder/hopper.
-    public static final double kVelocityToleranceRPM = 100.0;
-    public static final double kVelocityHysteresisToleranceRPM = 150.0;
+    public static final double kVelocityToleranceRPM = 50.0;
+    public static final double kVelocityHysteresisToleranceRPM = 100.0;
 
     public static final double kSysIdVoltageRampRate = 0.6;
     public static final double kSysIdVoltageStep = 3.0;
